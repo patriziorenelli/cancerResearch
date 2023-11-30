@@ -7,6 +7,9 @@ import json
 import csv
 
 
+# RIABILITARE I TRY EXCEPT PRIMA DI METTERE IN PROD 
+# VEDERE CHECK PARTE !!!!  E LA FUNZIONE  insertNewSamples
+
 
 # Funzione per scaricare e processare i dati di espressione da GDC
 '''
@@ -14,6 +17,7 @@ Gli passo params in modo da potervi accedere
 '''
 def download_and_process_expression_data(param):
 
+    #try:
         # Creo connessione con il database 
         cursor, conn = databaseConnection()
         if cursor == None or conn == None:
@@ -21,6 +25,8 @@ def download_and_process_expression_data(param):
             return 
         else: 
             print("Connessione riuscita")
+
+        conn.autocommit = False
 
         # URL dell'API GDC per scaricare i file corrispondenti alle analisi
         gdc_api_url = "https://api.gdc.cancer.gov/files"
@@ -72,12 +78,12 @@ def download_and_process_expression_data(param):
             # Altri campi per ottenere maggiori informazioni sui file scaricati 
             "fields": "file_name,file_size,created_datetime,updated_datetime,data_type,experimental_strategy,data_category,cases.project.project_id,cases.case_id,cases.submitter_id,associated_entities.entity_submitter_id",
             "format": "JSON",
-            "size": "20",  # Numero massimo di file da scaricare per richiesta
+            "size": "1277",  # Numero massimo di file da scaricare per richiesta
             "pretty": "true"  # pretty indica che la response viene formattata con spazi aggiuntivi per migliorare la leggibilità
         }
         
         response = requests.get(gdc_api_url, params=params)
-        data = response.json()
+
 
         # Elaborazione dei dati e inserimento nel database
         for file_info in json.loads(response.content.decode("utf-8"))["data"]["hits"]:
@@ -92,38 +98,35 @@ def download_and_process_expression_data(param):
                 # Se ho recuperato informazioni sul progetto allora faccio l'insert nel database 
                 if project_name != None:
                     insertNewProject(project_id, project_name, cursor, conn)
+                    conn.commit()
 
             # Gestione dei case
             if not checkExistCase(file_info["cases"][0]["submitter_id"], cursor):
                 case_data = searchCase(file_info["cases"][0]["case_id"])
                 if case_data != None:
                     insertNewCase(case_data, project_id, cursor, conn)
+                    conn.commit()
 
 
             type_id = None
             # Gestione dei file 
             if not checkExistFile(file_id, cursor):
                 type_id = insertNewAnalysis(file_id, file_info, project_id, cursor, conn)
-
-            
-
+                conn.commit()
                 expression_data = downloadFile(file_id, type_id)
                 if expression_data == None:
                     return 
                 
 
-                # FIN QUI TUTTO OK  
+                # !!!! 
 
-
-                # VEDERE COME CAMBIARE QUESTA PARTE SOTTO E LA FUNZIONE  insertNewSamples
-                # MANCA UN DOPPIO TRY EXCEPT CHE COPRE IL CONTENUTO DI QUESTA FUNZIONE: UNO PER GLI ERRORI DEL DB E UNO PER GLI ERRORI GENERICI  -> COME HA FATTO VALERIO 
-
-# SELECT COUNT(*) FROM gene_expression_file -> 582308
+                
+                # MANCA UN DOPPIO TRY EXCEPT CHE COPRE IL CONTENUTO DI QUESTA FUNZIONE: UNO PER GLI ERRORI DEL DB E UNO PER GLI ERRORI GENERICI
 
                 for entity in file_info["associated_entities"]: 
-                        cursor.execute("INSERT INTO analysis_entity VALUES (%s, %s)", (file_id, entity["entity_submitter_id"]))
+                        if checkExistBiospecimen(entity["entity_submitter_id"], cursor):
+                            cursor.execute("INSERT INTO analysis_entity VALUES (%s, %s)", (file_id, entity["entity_submitter_id"]))
                 conn.commit()
-                    
                 if type_id == 1:
                         for data_row in expression_data:
                             # Inserimento dei dati di espressioni GENICHE nel database
@@ -153,11 +156,36 @@ def download_and_process_expression_data(param):
                         conn.commit()
                 print("File inserito nel database")
             else: 
-                print("Il file è gia presente nel database")
+                #print("Il file è gia presente nel database")
+                pass
+            conn.commit()
 
         print(f"Download, elaborazione e inserimento dei dati completati.")
 
+'''
+    except Exception as error:
+        # Gestione generica degli errori
+        conn.rollback()
+        print(f"Errore sconosciuto: {error}")
 
+    finally:
+        # Ripristina l'autocommit
+        conn.autocommit = True
+
+        # Chiudi la connessione
+        cursor.close()
+        conn.close()
+    '''
+
+'''
+Verifica se esiste un id nella tabella biospcimen
+'''
+def checkExistBiospecimen(id, cursor):
+    cursor.execute("SELECT COUNT(*) FROM biospecimen WHERE id = %s", (id,))
+    result = cursor.fetchone()
+    if result[0] == 0: 
+        return False
+    return True
 
 '''
 Verifica se esiste un progetto all'interno del database
@@ -195,7 +223,6 @@ Funzione che inserisce i dati di un singolo nuovo progetto all'interno del datab
 def insertNewProject(id, name, cursor,conn):
     query = "INSERT INTO public.project VALUES ('{}', '{}') ON CONFLICT (project_id) DO NOTHING;".format(id,name)
     cursor.execute(query)
-    conn.commit()
 
 '''
 Verifica se esiste un caso all'interno del database
@@ -235,13 +262,12 @@ Funzione che inserisce i dati di un singolo nuovo case all'interno del database
 def insertNewCase(data, project_id, cursor, conn):
     search_site_malattia = "SELECT site_id, disease_id FROM primary_site, disease WHERE LOWER(site) = LOWER('{}') AND LOWER(type) = LOWER('{}')"
     insert_case = "INSERT INTO public.case VALUES ('{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}');"
-    
-    cursor.execute(search_site_malattia.format(data["primary_site"], data["disease_type"],))
-    disease_site = cursor.fetchone()
 
-    cursor.execute(insert_case.format(data["submitter_id"], data["demographic"]["ethnicity"], data["demographic"]["gender"], data["demographic"]["race"], data["demographic"]["vital_status"], project_id, disease_site[0], disease_site[1]))
-    conn.commit()
-    insertNewSamples(data["samples"], data["submitter_id"], cursor, conn)
+    if "disease_type" in data:
+        cursor.execute(search_site_malattia.format(data["primary_site"], data["disease_type"],))
+        disease_site = cursor.fetchone()
+        cursor.execute(insert_case.format(data["submitter_id"], data["demographic"]["ethnicity"], data["demographic"]["gender"], data["demographic"]["race"], data["demographic"]["vital_status"], project_id, disease_site[0], disease_site[1]))
+        insertNewSamples(data["samples"], data["submitter_id"], cursor, conn)
 
 
 
@@ -269,32 +295,38 @@ def insertNewSamples(samples, case_id, cursor,conn):
             cursor.execute(inserisci_tipo_campione, (type_id, sample["sample_type"]))
         else: type_id = None   
 
+
         cursor.execute(inserisci_biospecie, (sample_id, case_id, 1))
         cursor.execute(inserisci_campione, (sample_id, type_id, tumor_code))
         if "portions" in sample:
             for portion in sample["portions"]:
-                portion_id = portion["submitter_id"]
+                try:
+                    portion_id = portion["submitter_id"]
 
-                cursor.execute(inserisci_biospecie, (portion_id, case_id, 2))
-                cursor.execute(inserisci_porzione, (portion_id, sample_id))
-                if "analytes" in portion:
-                    for analyte in portion["analytes"]:
-                        analyte_id = analyte["submitter_id"]
+#'portions': [{'analytes': [{'aliquots': [{'submitter_id': 'CPT0086270006', 'concentration': None}]}]}, 
+#                               {'analytes': [{'aliquots': [{'submitter_id': 'CPT0086270009', 'concentration': None}]}]}]
 
-                        cursor.execute(inserisci_biospecie, (analyte_id, case_id, 3))
-                        cursor.execute(inserisci_analita, (analyte_id, portion_id, analyte["concentration"]))
-                        if "aliquots" in analyte:
-                            for aliquote in analyte["aliquots"]:
-                                aliquote_id = aliquote["submitter_id"]
+                    cursor.execute(inserisci_biospecie, (portion_id, case_id, 2))
+                    cursor.execute(inserisci_porzione, (portion_id, sample_id))
+                    if "analytes" in portion:
+                        for analyte in portion["analytes"]:
+                            analyte_id = analyte["submitter_id"]
 
-                                cursor.execute(inserisci_biospecie, (aliquote_id, case_id, 4))
-                                cursor.execute(inserisci_aliquota, (aliquote_id, analyte_id, aliquote["concentration"]))
-    conn.commit()
+                            cursor.execute(inserisci_biospecie, (analyte_id, case_id, 3))
+                            cursor.execute(inserisci_analita, (analyte_id, portion_id, analyte["concentration"]))
+                            if "aliquots" in analyte:
+                                for aliquote in analyte["aliquots"]:
+                                    aliquote_id = aliquote["submitter_id"]
 
+                                    cursor.execute(inserisci_biospecie, (aliquote_id, case_id, 4))
+                                    cursor.execute(inserisci_aliquota, (aliquote_id, analyte_id, aliquote["concentration"]))
+                except:
+                    pass
 '''
 Verifica se esiste un file all'interno del database
 '''
 def checkExistFile(id, cursor):
+
     cursor.execute("SELECT COUNT(*) FROM analysis WHERE file_id = %s", (id,))
     result = cursor.fetchone()
     if result[0] == 0: 
@@ -308,10 +340,8 @@ def insertNewAnalysis(file_id, file_info, project_id, cursor, conn):
     cursor.execute("SELECT type_id, category_id, strategy_id FROM data_type, data_category, experimental_strategy WHERE type = %s AND category = %s AND strategy = %s", (file_info["data_type"], file_info["data_category"], file_info["experimental_strategy"],))
     type_category_strategy_id = cursor.fetchone()
     type_id = type_category_strategy_id[0]
-
     # Inserisci i dettagli del file nel database
     cursor.execute("INSERT INTO analysis VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)", (file_id, file_info["file_name"], file_info["file_size"], file_info["created_datetime"], file_info["updated_datetime"], project_id, type_id, type_category_strategy_id[1], type_category_strategy_id[2]))
-    conn.commit()           
     return type_id
 
 

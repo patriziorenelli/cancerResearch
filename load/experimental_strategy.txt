@@ -1,4 +1,12 @@
 RNA-Seq
+WXS
+miRNA-Seq
+Methylation Array
+Tissue Slide
+Diagnostic Slide
 Reverse Phase Protein Array
+ATAC-Seq
 Genotyping Array
 WGS
+Targeted Sequencing
+scRNA-Seq

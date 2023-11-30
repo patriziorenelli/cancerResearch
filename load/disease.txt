@@ -1,4 +1,60 @@
-Adenomas and Adenocarcinomas
-Squamous Cell Neoplasms
-Cystic, Mucinous and Serous Neoplasms
-Acinar Cell Neoplasms
+adenomas and adenocarcinomas
+cystic, mucinous and serous neoplasms
+squamous cell neoplasms
+epithelial neoplasms, nos
+ductal and lobular neoplasms
+complex mixed and stromal neoplasms
+neoplasms, nos
+complex epithelial neoplasms
+gliomas
+myomatous neoplasms
+nevi and melanomas
+transitional cell papillomas and carcinomas
+fibromatous neoplasms
+mesothelial neoplasms
+myeloid leukemias
+soft tissue tumors and sarcomas, nos
+acinar cell neoplasms
+adnexal and skin appendage neoplasms
+germ cell neoplasms
+lymphoid leukemias
+mature b-cell lymphomas
+osseous and chondromatous neoplasms
+synovial-like neoplasms
+thymic epithelial neoplasms
+basal cell neoplasms
+lipomatous neoplasms
+nerve sheath tumors
+neuroepitheliomatous neoplasms
+paragangliomas and glomus tumors
+specialized gonadal neoplasms
+blood vessel tumors
+miscellaneous bone tumors
+mucoepidermoid neoplasms
+chronic myeloproliferative disorders
+leukemias, nos
+meningiomas
+myelodysplastic syndromes
+not reported
+fibroepithelial neoplasms
+neoplasms of histiocytes and accessory lymphoid cells
+not applicable
+plasma cell tumors
+granular cell tumors and alveolar soft part sarcomas
+malignant lymphomas, nos or diffuse
+mast cell tumors
+miscellaneous tumors
+other leukemias
+unknown
+hodgkin lymphoma
+mature t- and nk-cell lymphomas
+myxomatous neoplasms
+precursor cell lymphoblastic lymphoma
+trophoblastic neoplasms
+immunoproliferative diseases
+mesonephromas
+odontogenic tumors
+other hematologic disorders
+acute lymphoblastic leukemia
+giant cell tumors
+lymphatic vessel tumors

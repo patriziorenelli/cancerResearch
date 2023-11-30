@@ -3,7 +3,9 @@ import psycopg2
 import pandas as pd
 from io import StringIO
 import params
-
+import os 
+import datetime
+import pathlib
 
 # LE 2 CLOSURE SONO FONDAMENTALI PERCHE' LA CONNESSIONE USATA CHE VA IN ERRORE E' DA BUTTARE !! 
 '''
@@ -28,7 +30,7 @@ def databaseConstruction():
                     conn.close()
                     cursor, conn = databaseConnection()
                     # Carico le singole query da eseguire per creare le tabelle 
-                    query = open("Schema.sql", "r").read()
+                    query = open(".\\load\\Schema.sql", "r").read()
                     query = query.split(";")
                     # Eseguo le singole query e controllo il loro risultato 
                     for x in query: 
@@ -62,7 +64,18 @@ def databaseCreation():
         sql = 'CREATE database "GDC"'
         cursor.execute(sql)
         print("Database creato")
-        return databaseConstruction()
+
+        # Se esiste un backup del database lo ripristino 
+        backup_file = [stringa for stringa in os.listdir(".//Backup") if stringa.startswith("Backup")]
+        if len(backup_file) > 0:
+            print("RECUPERO DATI DAL BACKUP: ")
+            reloadData()
+            print("RECUPERO DEI DATI DAL BACKUP TERMINATO")
+            return cursor, conn
+        else:
+            return databaseConstruction()
+
+
     except psycopg2.Error as db_error:
         print("Errore nella connesione al database")
         print("Dettaglio errore: ", db_error)
@@ -93,7 +106,7 @@ def databaseConnection():
 
 
 '''
-Funzione che si occupa di riempire le tabelle di base necessarie al funzionamento delle altre funzione
+Funzione che si occupa di riempire le tabelle di base necessarie al funzionamento delle altre funzioni
 Sfrutta dei file contenuti nella cartella load contenenti i dati da caricare 
 '''
 def fillingBasicTable(cursor,conn):
@@ -121,5 +134,52 @@ def fillingBasicTable(cursor,conn):
 
 
 
+
+'''
+Funzione che si occupa di eseguire un backup del database e gestisce le copie salvate, lasciandone 2 sempre
+'''
+def saveDatabase():
+    timestamp = datetime.datetime.now()
+    timestamp = str(timestamp.day) + "-" + str(timestamp.month) + "-" + str(timestamp.year) + "_" + str(timestamp.hour) + "-" + str(timestamp.minute) + "-" + str(timestamp.second)  
+    comando = '"C:\\Program Files\\PostgreSQL\\16\\bin\\pg_dump.exe" postgresql://postgres:1234@localhost:5432/GDC > "d:\\users\\patrizio\\desktop\\Tirocinio\\Reale\\Backup\\Backup_"'+ timestamp
+    
+    os.system(('cmd /C {}').format(comando))
+    print("BACKUP CREATO: Backup_" + timestamp)
+   
+    # Gestione del salvataggio di solo 2 copie del database 
+    # Prendo solo i file che inziano con la stringa Backup
+    backup_file = [stringa for stringa in os.listdir(".//Backup") if stringa.startswith("Backup")]
+    # Se ho piu' di 2 backup allora creo un dizionario nomeFile : timestamp creazione (ottenuta da os)
+    if len(backup_file) > 2:
+        dict_backup_date = dict()
+        for x in backup_file:
+            dict_backup_date[x] = float(pathlib.Path(".//Backup//"+x).stat().st_mtime)
+
+        # Ordino i file in base al timestamp 
+        dict_backup_date = sorted(dict_backup_date, key=lambda k: dict_backup_date[k], reverse=True)
+
+        # Eliminiamo le copie di backup più vecchie mantenendo solo le ultime 2 più recenti
+        for fileName in dict_backup_date[2:]:
+            os.remove(".//Backup//"+fileName)
+
+'''
+Funzione che si occupa di eseguire il SOLO ripristino del database dalla copia piu' recente disponibile 
+(SE SI VUOLE RIPRISTINARE SENZA AVERE IL DB CREATO LANCIARE PRIMA LA FUNZIONE databaseConstruction() )
+'''
+def reloadData():
+
+    backup_file = [stringa for stringa in os.listdir(".//Backup") if stringa.startswith("Backup")]
+
+    # creo un dizionario nomeFile : timestamp creazione (ottenuta da os) per ordinare i file in base al timestamp ed ottenere poi il più recente 
+    dict_backup_date = dict()
+    for x in backup_file:
+        dict_backup_date[x] = float(pathlib.Path(".//Backup//"+x).stat().st_mtime)
+    # Ordino i file in base al timestamp 
+    dict_backup_date = sorted(dict_backup_date, key=lambda k: dict_backup_date[k], reverse=True)
+
+    print(dict_backup_date[0])
+    # Eseguo il restore dal backup più recente 
+    comando = '"C:\\Program Files\\PostgreSQL\\16\\bin\\psql.exe" postgresql://postgres:1234@localhost:5432/GDC < "d:\\users\\patrizio\\desktop\\Tirocinio\\Reale\\Backup\\"' + dict_backup_date[0]
+    os.system(('cmd /C {}').format(comando))
 
 
