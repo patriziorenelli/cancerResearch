@@ -4,7 +4,5 @@
 Implementation of an automatic system for downloading, analyzing and archiving the data provided by the NIH (NATIONAL CANCER INSTITUTE) partners:
  * [GDC (GENOMIC DATA COMMONS)]( https://gdc.cancer.gov/)
  * [PDC (IMAGING DATA COMMONS)](https://proteomic.datacommons.cancer.gov/pdc/)
- * [IDC (PROTEOMIC DATA COMMONS)](https://datacommons.cancer.gov/repository/imaging-data-commons)
- * [CDS (CANCER DATA SERVICE)](https://dataservice.datacommons.cancer.gov/#/home)
 
 ## Project under development
