@@ -47,10 +47,13 @@ def databaseConstruction():
                     
                     if not errore:
                         print("Struttura del databse creata")    
+
+                        
                         if fillingBasicTable(cursor, conn):
                             print("Errore nella riempimento delle tabelle base")
                             cursor = None
                             conn = None
+                        
                     return cursor, conn
     return cursor,conn   
 '''
@@ -105,12 +108,14 @@ def databaseConnection():
             return None 
 
 
-'''
+''' 
 Funzione che si occupa di riempire le tabelle di base necessarie al funzionamento delle altre funzioni
 Sfrutta dei file contenuti nella cartella load contenenti i dati da caricare 
 '''
 def fillingBasicTable(cursor,conn):
-    basicTable = ["primary_site", "biospecimen_type", "data_category", "data_type", "disease", "experimental_strategy", "gene_type"]
+    #basicTable = ["primary_site", "biospecimen_type", "data_category", "data_type", "disease", "experimental_strategy", "gene_type"]
+    basicTable = [ "biospecimen_type"]
+
     basicQuery = "INSERT INTO public.{} VALUES (DEFAULT, '{}');"
 
     try: 
@@ -132,15 +137,13 @@ def fillingBasicTable(cursor,conn):
 
     return False
 
-
-
-
 '''
 Funzione che si occupa di eseguire un backup del database e gestisce le copie salvate, lasciandone 2 sempre
 '''
 def saveDatabase():
     timestamp = datetime.datetime.now()
     timestamp = str(timestamp.day) + "-" + str(timestamp.month) + "-" + str(timestamp.year) + "_" + str(timestamp.hour) + "-" + str(timestamp.minute) + "-" + str(timestamp.second)  
+    # Questa è la riga di comando fondamentale che attraverso il tool pg_dump nativo di postgres esegue il backup del database 
     comando = '"C:\\Program Files\\PostgreSQL\\16\\bin\\pg_dump.exe" postgresql://postgres:1234@localhost:5432/GDC > "d:\\users\\patrizio\\desktop\\Tirocinio\\Reale\\Backup\\Backup_"'+ timestamp
     
     os.system(('cmd /C {}').format(comando))
@@ -178,8 +181,11 @@ def reloadData():
     dict_backup_date = sorted(dict_backup_date, key=lambda k: dict_backup_date[k], reverse=True)
 
     print(dict_backup_date[0])
-    # Eseguo il restore dal backup più recente 
+    # Questa è la riga di comando fondamentale che attraverso psql di postgres esegue la restore del database dal backup più recente 
     comando = '"C:\\Program Files\\PostgreSQL\\16\\bin\\psql.exe" postgresql://postgres:1234@localhost:5432/GDC < "d:\\users\\patrizio\\desktop\\Tirocinio\\Reale\\Backup\\"' + dict_backup_date[0]
     os.system(('cmd /C {}').format(comando))
 
 
+#reloadData()
+#databaseConnection()
+#saveDatabase()
