@@ -1,3 +1,0 @@
-Gene Expression Quantification
-Protein Expression Quantification
-Gene Level Copy Number
