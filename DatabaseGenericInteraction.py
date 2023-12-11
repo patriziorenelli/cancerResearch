@@ -1,4 +1,3 @@
-
 '''
 Verifica se esiste un id nella tabella biospcimen
 '''

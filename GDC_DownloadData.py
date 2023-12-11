@@ -9,7 +9,7 @@ import csv
 
 
 # RIABILITARE I TRY EXCEPT PRIMA DI METTERE IN PROD 
-# VEDERE CHECK PARTE !!!!  E LA FUNZIONE  insertNewSamples
+
 
 
 # Funzione per scaricare e processare i dati di espressione da GDC
@@ -32,16 +32,26 @@ def download_and_process_expression_data(param):
         # URL dell'API GDC per scaricare i file corrispondenti alle analisi
         gdc_api_url = "https://api.gdc.cancer.gov/files"
 
-        # Download dei dati
-        filters = {
-            "op": "and",
-            "content": [
-                # Filtro riguardante il sito primario della malattia che vogliamo analizzare
+        '''
+ # Filtro riguardante il sito primario della malattia che vogliamo analizzare
                 {
                     "op": "=",
                     "content": {
                         "field": "cases.primary_site",
-                        "value": "bronchus and lung"
+                        "value": "testis"
+                    }
+                },
+'''
+
+        # Download dei dati
+        filters = {
+            "op": "and",
+            "content": [
+                {
+                    "op": "=",
+                    "content": {
+                        "field": "cases.primary_site",
+                        "value": "Bronchus and lung"
                     }
                 },
                 # Filtro riguardante il tipo di dati che vogliamo analizzare
@@ -79,7 +89,7 @@ def download_and_process_expression_data(param):
             # Altri campi per ottenere maggiori informazioni sui file scaricati 
             "fields": "file_name,file_size,created_datetime,updated_datetime,data_type,experimental_strategy,data_category,cases.project.project_id,cases.case_id,cases.submitter_id,associated_entities.entity_submitter_id",
             "format": "JSON",
-            "size": "600",  # Numero massimo di file da scaricare per richiesta
+            "size": "110000",  # Numero massimo di file da scaricare per richiesta
             "pretty": "true"  # pretty indica che la response viene formattata con spazi aggiuntivi per migliorare la leggibilità
         }
         
@@ -88,25 +98,49 @@ def download_and_process_expression_data(param):
 
         # Elaborazione dei dati e inserimento nel database
         for file_info in json.loads(response.content.decode("utf-8"))["data"]["hits"]:
-            
-            file_id = file_info["id"]
+            if "id" in file_info:
+                file_id = file_info["id"]
+            else:
+                break
             print(file_id)
+
+            # Check vari per evitare al massimo errori durante l'esecuzione del codice 
+            if "cases" not in file_info:
+                break 
+            elif "submitter_id" not in file_info["cases"][0]:
+                break
+            elif "case_id" not in file_info["cases"][0]:
+                break
+
+            if "project" not in file_info["cases"][0]:
+                break 
+            elif "project_id" not in file_info["cases"][0]["project"]:
+                break
+            
+
             # Gestione dei progetti 
             project_id = file_info["cases"][0]["project"]["project_id"]
             # Controllo se il progetto esiste già nel database 
             if not checkExistProject(project_id, cursor): 
+                # searchProject restituisce None in caso di errore -> FARE CHECK QUA
                 project_name = searchProject(project_id)
+
                 # Se ho recuperato informazioni sul progetto allora faccio l'insert nel database 
                 if project_name != None:
                     insertNewProject(project_id, project_name, cursor, conn)
                     conn.commit()
+                else:
+                    break
 
             # Gestione dei case
             if not checkExistCase(file_info["cases"][0]["submitter_id"], cursor):
+                # searchCase restituisce None in caso di errore  -> FARE CHECK QUA 
                 case_data = searchCase(file_info["cases"][0]["case_id"])
                 if case_data != None:
                     insertNewCase(case_data, project_id, cursor, conn)
                     conn.commit()
+                else:
+                    break
 
 
             type_id = None
@@ -125,37 +159,56 @@ def download_and_process_expression_data(param):
                 
                 # MANCA UN DOPPIO TRY EXCEPT CHE COPRE IL CONTENUTO DI QUESTA FUNZIONE: UNO PER GLI ERRORI DEL DB E UNO PER GLI ERRORI GENERICI
 
-                for entity in file_info["associated_entities"]: 
-                        if checkExistBiospecimen(entity["entity_submitter_id"], cursor):
-                            cursor.execute("INSERT INTO analysis_entity VALUES (%s, %s)", (file_id, entity["entity_submitter_id"]))
-                conn.commit()
-                if type_id == 1:
-                        for data_row in expression_data:
-                            # Inserimento dei dati di espressioni GENICHE nel database
-                            gene_id = data_row["gene_id"]
-                            stranded_first = data_row["stranded_first"]
-                            stranded_second = data_row["stranded_second"]
+                if "associated_entities"  in file_info:
+                     
+                    for entity in file_info["associated_entities"]: 
+                            if "entity_submitter_id" in entity:
+                                if checkExistBiospecimen(entity["entity_submitter_id"], cursor):
+                                    cursor.execute("INSERT INTO analysis_entity VALUES (%s, %s)", (file_id, entity["entity_submitter_id"]))
+                    conn.commit()
+                    if type_id == 1:
+                            for data_row in expression_data:
+                                # Inserimento dei dati di espressioni GENICHE nel database
 
-                            gene_type_id = getGeneType(data_row["gene_type"], cursor, conn)
+                                if "gene_type"  in data_row:
+                                    gene_type_id = getGeneType(data_row["gene_type"], cursor, conn)
 
-                            # Inserisci il gene nel database
-                            cursor.execute("INSERT INTO gene VALUES (%s, %s, %s) ON CONFLICT (gene_id) DO NOTHING;", (gene_id, data_row["gene_name"], gene_type_id))
+                                if "gene_id" not in data_row or "gene_name" not in data_row:
+                                    continue
 
-                            if stranded_first != 0 and stranded_second != 0: 
-                                cursor.execute("INSERT INTO gene_expression_file VALUES (%s, %s, %s, %s, %s, %s, %s, %s)", (file_id, gene_id, data_row["tpm_unstranded"], data_row["fpkm_unstranded"], data_row["fpkm_uq_unstranded"], data_row["unstranded"], stranded_first, stranded_second))
-                        conn.commit()
-                elif type_id == 2:
-                        # Inserimento dei dati di espressioni PROTEICHE nel database
-                        for data_row in expression_data:
-                            agid = data_row["AGID"]
-                            expression = data_row["protein_expression"]
+                                gene_id = data_row["gene_id"]
+                                gene_name = data_row["gene_name"]
+                                # Inserisci il gene nel database
+                                cursor.execute("INSERT INTO gene VALUES (%s, %s, %s) ON CONFLICT (gene_id) DO NOTHING;", (gene_id, gene_name , gene_type_id))
 
-                            # Inserisci la proteina nel database
-                            cursor.execute("INSERT INTO protein VALUES (%s, %s, %s, %s, %s) ON CONFLICT (agid) DO NOTHING;", (agid, data_row["lab_id"], data_row["catalog_number"], data_row["set_id"], data_row["peptide_target"]))
-                            
-                            if expression != "NaN": cursor.execute("INSERT INTO protein_expression_file VALUES (%s, %s, %s)", (file_id, agid, expression))
-                        conn.commit()
-                print("File inserito nel database")
+                                if "stranded_first" not in data_row or "stranded_second" not in data_row or "tpm_unstranded" not in data_row or "fpkm_unstranded" not in data_row or "fpkm_uq_unstranded" not in data_row or "unstranded" not in data_row:
+                                    continue
+
+                                stranded_first = data_row["stranded_first"]
+                                stranded_second = data_row["stranded_second"]
+                                if stranded_first != 0 and stranded_second != 0: 
+                                    cursor.execute("INSERT INTO gene_expression_file VALUES (%s, %s, %s, %s, %s, %s, %s, %s)", (file_id, gene_id, data_row["tpm_unstranded"], data_row["fpkm_unstranded"], data_row["fpkm_uq_unstranded"], data_row["unstranded"], stranded_first, stranded_second))
+                            conn.commit()
+                    elif type_id == 2:
+                            # Inserimento dei dati di espressioni PROTEICHE nel database
+                            for data_row in expression_data:
+                                if "AGID" not in data_row:
+                                    continue
+
+                                agid = data_row["AGID"]
+
+
+                                if "lab_id" not in data_row or "catalog_number" not in data_row or "set_id" not in data_row or "peptide_target" not in data_row:
+                                    continue
+                                # Inserisci la proteina nel database
+                                cursor.execute("INSERT INTO protein VALUES (%s, %s, %s, %s, %s) ON CONFLICT (agid) DO NOTHING;", (agid, data_row["lab_id"], data_row["catalog_number"], data_row["set_id"], data_row["peptide_target"]))
+
+                                if  "protein_expression" in data_row:
+                                    if data_row["protein_expression"] != "NaN":
+                                        cursor.execute("INSERT INTO protein_expression_file VALUES (%s, %s, %s)", (file_id, agid, data_row["protein_expression"]))
+
+                            conn.commit()
+                    print("File inserito nel database")
             else: 
                 #print("Il file è gia presente nel database")
                 pass
@@ -193,7 +246,18 @@ def searchProject(id):
     response = requests.get(project_url, params=params)
 
     if response.status_code == 200:
-        data = json.loads(response.content.decode("utf-8"))["data"]
+
+        js = json.loads(response.content.decode("utf-8"))
+
+        if "data" not in js:
+            print("Errore nella response per la funzione searchProject")
+            return None
+        elif "name" not in js["data"]:
+            print("Errore nella response per la funzione searchProject")
+            return None
+
+        data = js["data"]
+
         return data["name"]
     else:
         print(f"Errore durante il download del progetto: {response.status_code}")
@@ -214,8 +278,12 @@ def searchCase(id):
     response = requests.get(cases_url, params=params)
 
     if response.status_code == 200:
-        data = json.loads(response.content.decode("utf-8"))["data"]
-        return data
+
+        js = json.loads(response.content.decode("utf-8"))
+        if "data" not in js:
+            print("Errore nella response per la funzione searchCase")
+            return None
+        return js["data"]
     
     print(f"Errore durante il download del case: {response.status_code}")
     return None 
@@ -227,17 +295,24 @@ def insertNewCase(data, project_id, cursor, conn):
     #search_site_malattia = "SELECT site_id, disease_id FROM primary_site, disease WHERE LOWER(site) = LOWER('{}') AND LOWER(type) = LOWER('{}')"
     insert_case = "INSERT INTO public.case VALUES ('{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}');"
 
+    if "primary_site" not in data or "disease_type" not in data or "submitter_id" not in data or "demographic" not in data or "samples" not in data:
+        print("Errore nei dati relativi al case analizzati nella funzione insertNewCase")
+        return 
+    elif "ethnicity" not in data["demographic"] or "gender" not in data["demographic"] or "race" not in data["demographic"] or "vital_status" not in data["demographic"]:
+        print("Errore nei dati relativi al case analizzati nella funzione insertNewCase")
+        return 
+    
     primary_site = getPrimarySite(data["primary_site"], cursor, conn)
     disease = getDisease(data["disease_type"], cursor,conn)
 
     if "disease_type" in data:        
         cursor.execute(insert_case.format(data["submitter_id"], data["demographic"]["ethnicity"], data["demographic"]["gender"], data["demographic"]["race"], data["demographic"]["vital_status"], project_id, primary_site , disease))
-        insertNewSamples(data["samples"], data["submitter_id"], cursor, conn)
+        insertNewSamples(data["samples"], data["submitter_id"], cursor)
 
 '''
 Funzione che inserisce i dati dei nuovi campioni all'interno del database
 '''
-def insertNewSamples(samples, case_id, cursor,conn):
+def insertNewSamples(samples, case_id, cursor):
     inserisci_biospecie = "INSERT INTO biospecimen VALUES (%s, %s, %s)"
     inserisci_tumore = "INSERT INTO tumor VALUES (%s, %s, %s) ON CONFLICT (tumor_code_id) DO NOTHING;"
     inserisci_tipo_campione = "INSERT INTO sample_type VALUES (%s, %s) ON CONFLICT (type_id) DO NOTHING;"
@@ -247,8 +322,10 @@ def insertNewSamples(samples, case_id, cursor,conn):
     inserisci_aliquota = "INSERT INTO aliquote VALUES (%s, %s, %s)"
 
     for sample in samples:
+
+        if "submitter_id" not in sample:
+            continue
         sample_id = sample["submitter_id"]
-        
         if "tumor_code_id" in sample and sample["tumor_code_id"] != None: 
             tumor_code = sample["tumor_code_id"]
             cursor.execute(inserisci_tumore, (tumor_code, sample["tumor_code"], sample["tumor_descriptor"]))
@@ -264,21 +341,34 @@ def insertNewSamples(samples, case_id, cursor,conn):
         if "portions" in sample:
             for portion in sample["portions"]:
                 try:
+
+                    if "submitter_id" not in portion:
+                        continue
                     portion_id = portion["submitter_id"]
 
                     cursor.execute(inserisci_biospecie, (portion_id, case_id, 2))
                     cursor.execute(inserisci_porzione, (portion_id, sample_id))
                     if "analytes" in portion:
                         for analyte in portion["analytes"]:
-                            analyte_id = analyte["submitter_id"]
 
+                            if "submitter_id" not in analyte:
+                                continue
+                            analyte_id = analyte["submitter_id"]
                             cursor.execute(inserisci_biospecie, (analyte_id, case_id, 3))
+
+                            if "concentration" not in analyte:
+                                continue
                             cursor.execute(inserisci_analita, (analyte_id, portion_id, analyte["concentration"]))
+
                             if "aliquots" in analyte:
                                 for aliquote in analyte["aliquots"]:
+                                    if "submitter_id" not in aliquote:
+                                        continue
                                     aliquote_id = aliquote["submitter_id"]
-
                                     cursor.execute(inserisci_biospecie, (aliquote_id, case_id, 4))
+
+                                    if "concentration" not in aliquote:
+                                        continue
                                     cursor.execute(inserisci_aliquota, (aliquote_id, analyte_id, aliquote["concentration"]))
                 except:
                     pass
@@ -287,6 +377,10 @@ def insertNewSamples(samples, case_id, cursor,conn):
 Funzione che inserisce i dati di un singolo nuovo file all'interno del database
 '''
 def insertNewAnalysis(file_id, file_info, project_id, cursor, conn):
+
+    if "data_type" not in file_info or "data_category" not in file_info or "experimental_strategy" not in file_info or "file_name" not in file_info or "file_size" not in file_info or "created_datetime" not in file_info or "updated_datetime" not in file_info:
+        return None
+    
     dataType = getDataType(file_info["data_type"], cursor, conn)
     dataCategory = getDataCategory(file_info["data_category"], cursor, conn)
     expStrategy = getExperimentalStrategy(file_info["experimental_strategy"], cursor, conn)

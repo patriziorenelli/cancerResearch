@@ -121,7 +121,6 @@ def fillingBasicTable(cursor,conn):
     try: 
         for tab in basicTable:
             # dobbiamo aprire il relativo file e poi fare un for per le insert 
-            #print( basicQuery.format(basicTable[0], "'Maria'")  )
             path = ('.\\load\\{}.txt').format(tab)
             ins = open( path, "r").read()
             ins = ins.split('\n')
@@ -144,7 +143,7 @@ def saveDatabase():
     timestamp = datetime.datetime.now()
     timestamp = str(timestamp.day) + "-" + str(timestamp.month) + "-" + str(timestamp.year) + "_" + str(timestamp.hour) + "-" + str(timestamp.minute) + "-" + str(timestamp.second)  
     # Questa è la riga di comando fondamentale che attraverso il tool pg_dump nativo di postgres esegue il backup del database 
-    comando = '"C:\\Program Files\\PostgreSQL\\16\\bin\\pg_dump.exe" postgresql://postgres:1234@localhost:5432/GDC > "d:\\users\\patrizio\\desktop\\Tirocinio\\Reale\\Backup\\Backup_"'+ timestamp
+    comando = '"D:\\Program Files\\PostgreSQL\\16\\bin\\pg_dump.exe" postgresql://postgres:1234@localhost:5432/GDC > "d:\\users\\patrizio\\desktop\\Tirocinio\\Reale\\Backup\\Backup_"'+ timestamp
     
     os.system(('cmd /C {}').format(comando))
     print("BACKUP CREATO: Backup_" + timestamp)
@@ -182,7 +181,7 @@ def reloadData():
 
     print(dict_backup_date[0])
     # Questa è la riga di comando fondamentale che attraverso psql di postgres esegue la restore del database dal backup più recente 
-    comando = '"C:\\Program Files\\PostgreSQL\\16\\bin\\psql.exe" postgresql://postgres:1234@localhost:5432/GDC < "d:\\users\\patrizio\\desktop\\Tirocinio\\Reale\\Backup\\"' + dict_backup_date[0]
+    comando = '"D:\\Program Files\\PostgreSQL\\16\\bin\\psql.exe" postgresql://postgres:1234@localhost:5432/GDC < "d:\\users\\patrizio\\desktop\\Tirocinio\\Reale\\Backup\\"' + dict_backup_date[0]
     os.system(('cmd /C {}').format(comando))
 
 
