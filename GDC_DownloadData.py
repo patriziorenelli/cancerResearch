@@ -18,7 +18,7 @@ Gli passo params in modo da potervi accedere
 '''
 def download_and_process_expression_data(param):
 
-    #try:
+    try:
         # Creo connessione con il database 
         cursor, conn = databaseConnection()
         if cursor == None or conn == None:
@@ -47,13 +47,6 @@ def download_and_process_expression_data(param):
         filters = {
             "op": "and",
             "content": [
-                {
-                    "op": "=",
-                    "content": {
-                        "field": "cases.primary_site",
-                        "value": "Bronchus and lung"
-                    }
-                },
                 # Filtro riguardante il tipo di dati che vogliamo analizzare
                 {
                     "op": "in",
@@ -89,7 +82,7 @@ def download_and_process_expression_data(param):
             # Altri campi per ottenere maggiori informazioni sui file scaricati 
             "fields": "file_name,file_size,created_datetime,updated_datetime,data_type,experimental_strategy,data_category,cases.project.project_id,cases.case_id,cases.submitter_id,associated_entities.entity_submitter_id",
             "format": "JSON",
-            "size": "110000",  # Numero massimo di file da scaricare per richiesta
+            "size": "12000",  # Numero massimo di file da scaricare per richiesta
             "pretty": "true"  # pretty indica che la response viene formattata con spazi aggiuntivi per migliorare la leggibilità
         }
         
@@ -216,7 +209,7 @@ def download_and_process_expression_data(param):
 
         print(f"Download, elaborazione e inserimento dei dati completati.")
 
-'''
+
     except Exception as error:
         # Gestione generica degli errori
         conn.rollback()
@@ -225,25 +218,32 @@ def download_and_process_expression_data(param):
     finally:
         # Ripristina l'autocommit
         conn.autocommit = True
-
         # Chiudi la connessione
         cursor.close()
         conn.close()
-    '''
+
 
 
 '''
 Funzione che ricerca i dati di un singolo progetto
 '''
 def searchProject(id):
-    project_url = "https://api.gdc.cancer.gov/projects/" + id
-    params = {
-        #Puoi aggiungere altri campi che danno più info relative al progetto
-        "fields": "name",
-        "format": "JSON",
-        "pretty": "true"
-    }
-    response = requests.get(project_url, params=params)
+
+    try:
+        project_url = "https://api.gdc.cancer.gov/projects/" + id
+        params = {
+            #Puoi aggiungere altri campi che danno più info relative al progetto
+            "fields": "name",
+            "format": "JSON",
+            "pretty": "true"
+        }
+        response = requests.get(project_url, params=params)
+
+    except Exception as error:
+        # Gestione generica degli errori
+        print(f"Errore sconosciuto: {error}")
+        return None 
+
 
     if response.status_code == 200:
 
@@ -267,15 +267,21 @@ def searchProject(id):
 Funzione che ricerca i dati di un singolo case
 '''
 def searchCase(id):
-    cases_url = "https://api.gdc.cancer.gov/cases/" + id
+    
+    try:
+        cases_url = "https://api.gdc.cancer.gov/cases/" + id
 
-    params = {
-        #Puoi aggiungere altri campi che danno più info relative al caso
-        "fields": "submitter_id,demographic.ethnicity,demographic.gender,demographic.race,demographic.vital_status,primary_site,disease_type,samples.submitter_id,samples.sample_type,samples.sample_type_id,samples.tumor_code,samples.tumor_code_id,samples.tumor_descriptor,samples.portions.submitter_id,samples.portions.analytes.submitter_id,samples.portions.analytes.concentration,samples.portions.analytes.aliquots.submitter_id,samples.portions.analytes.aliquots.concentration", #samples.portions.slides.submitter_id
-        "format": "JSON",
-        "pretty": "true"
-    }
-    response = requests.get(cases_url, params=params)
+        params = {
+            #Puoi aggiungere altri campi che danno più info relative al caso
+            "fields": "submitter_id,demographic.ethnicity,demographic.gender,demographic.race,demographic.vital_status,primary_site,disease_type,samples.submitter_id,samples.sample_type,samples.sample_type_id,samples.tumor_code,samples.tumor_code_id,samples.tumor_descriptor,samples.portions.submitter_id,samples.portions.analytes.submitter_id,samples.portions.analytes.concentration,samples.portions.analytes.aliquots.submitter_id,samples.portions.analytes.aliquots.concentration", #samples.portions.slides.submitter_id
+            "format": "JSON",
+            "pretty": "true"
+        }
+        response = requests.get(cases_url, params=params)
+    except Exception as error:
+        # Gestione generica degli errori
+        print(f"Errore sconosciuto: {error}")
+        return None 
 
     if response.status_code == 200:
 
@@ -393,9 +399,13 @@ def insertNewAnalysis(file_id, file_info, project_id, cursor, conn):
 Funzione per il download di un singolo file 
 '''
 def downloadFile(file_id, type_id):
-
-    file_url = "https://api.gdc.cancer.gov/data/" + file_id
-    response = requests.get(file_url)
+    try:
+        file_url = "https://api.gdc.cancer.gov/data/" + file_id
+        response = requests.get(file_url)
+    except Exception as error:
+        # Gestione generica degli errori
+        print(f"Errore sconosciuto: {error}")
+        return None
 
     if response.status_code == 200:
         # Elabora i dati dal file scaricato
@@ -424,4 +434,5 @@ print("CONNESSIONE AL DATABASE STABILITA")
 
 
 # SE IL DB NON ESISTE E SI LANCIA DIRETTAMENTE QUESTA FUNZIONE, ALLA PRIMA INSERT ANDRA' IN ERRORE PERCHE' NON TROVERA' I DATI -> VALUTARE SE E' NECESSARIO CREARE UNA NUOVA CONNESSIONE COL DB E POI PROCEDERE 
-download_and_process_expression_data(params)
+if __name__ == '__main__':
+    download_and_process_expression_data(params)
