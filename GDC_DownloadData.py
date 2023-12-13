@@ -18,16 +18,15 @@ Gli passo params in modo da potervi accedere
 '''
 def download_and_process_expression_data(param):
 
-    try:
+
         # Creo connessione con il database 
         cursor, conn = databaseConnection()
+
         if cursor == None or conn == None:
             print("Impossibile connettersi al database")
             return 
         else: 
             print("Connessione riuscita")
-
-        conn.autocommit = False
 
         # URL dell'API GDC per scaricare i file corrispondenti alle analisi
         gdc_api_url = "https://api.gdc.cancer.gov/files"
@@ -46,7 +45,8 @@ def download_and_process_expression_data(param):
         # Download dei dati
         filters = {
             "op": "and",
-            "content": [
+            "content": [                
+
                 # Filtro riguardante il tipo di dati che vogliamo analizzare
                 {
                     "op": "in",
@@ -82,7 +82,7 @@ def download_and_process_expression_data(param):
             # Altri campi per ottenere maggiori informazioni sui file scaricati 
             "fields": "file_name,file_size,created_datetime,updated_datetime,data_type,experimental_strategy,data_category,cases.project.project_id,cases.case_id,cases.submitter_id,associated_entities.entity_submitter_id",
             "format": "JSON",
-            "size": "12000",  # Numero massimo di file da scaricare per richiesta
+            "size": "120000",  # Numero massimo di file da scaricare per richiesta
             "pretty": "true"  # pretty indica che la response viene formattata con spazi aggiuntivi per migliorare la leggibilità
         }
         
@@ -210,20 +210,6 @@ def download_and_process_expression_data(param):
         print(f"Download, elaborazione e inserimento dei dati completati.")
 
 
-    except Exception as error:
-        # Gestione generica degli errori
-        conn.rollback()
-        print(f"Errore sconosciuto: {error}")
-
-    finally:
-        # Ripristina l'autocommit
-        conn.autocommit = True
-        # Chiudi la connessione
-        cursor.close()
-        conn.close()
-
-
-
 '''
 Funzione che ricerca i dati di un singolo progetto
 '''
@@ -302,10 +288,8 @@ def insertNewCase(data, project_id, cursor, conn):
     insert_case = "INSERT INTO public.case VALUES ('{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}');"
 
     if "primary_site" not in data or "disease_type" not in data or "submitter_id" not in data or "demographic" not in data or "samples" not in data:
-        print("Errore nei dati relativi al case analizzati nella funzione insertNewCase")
         return 
     elif "ethnicity" not in data["demographic"] or "gender" not in data["demographic"] or "race" not in data["demographic"] or "vital_status" not in data["demographic"]:
-        print("Errore nei dati relativi al case analizzati nella funzione insertNewCase")
         return 
     
     primary_site = getPrimarySite(data["primary_site"], cursor, conn)
@@ -332,11 +316,11 @@ def insertNewSamples(samples, case_id, cursor):
         if "submitter_id" not in sample:
             continue
         sample_id = sample["submitter_id"]
-        if "tumor_code_id" in sample and sample["tumor_code_id"] != None: 
+        if "tumor_code_id" in sample and sample["tumor_code_id"] != None and "tumor_code" in sample and "tumor_descriptor" in sample: 
             tumor_code = sample["tumor_code_id"]
             cursor.execute(inserisci_tumore, (tumor_code, sample["tumor_code"], sample["tumor_descriptor"]))
         else: tumor_code = None
-        if "sample_type_id" in sample and sample["sample_type_id"] != None: 
+        if "sample_type_id" in sample and sample["sample_type_id"] != None and "sample_type" in sample: 
             type_id = sample["sample_type_id"]
             cursor.execute(inserisci_tipo_campione, (type_id, sample["sample_type"]))
         else: type_id = None   
@@ -429,7 +413,6 @@ if cursor == None:
     sys.exit()
 
 print("CONNESSIONE AL DATABASE STABILITA")
-
 '''
 
 

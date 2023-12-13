@@ -53,7 +53,9 @@ def databaseConstruction():
                             print("Errore nella riempimento delle tabelle base")
                             cursor = None
                             conn = None
-                        
+                        else:
+                            cursor, conn = databaseConnection()
+
                     return cursor, conn
     return cursor,conn   
 '''
@@ -74,7 +76,17 @@ def databaseCreation():
             print("RECUPERO DATI DAL BACKUP: ")
             reloadData()
             print("RECUPERO DEI DATI DAL BACKUP TERMINATO")
-            return cursor, conn
+
+            # Chiudo la vecchia connessione ormai non più valida
+            cursor.close()
+            conn.close()
+
+            #Genero una nuova connessione al database
+            connection = psycopg2.connect(**params.db_params)
+            cursor = connection.cursor()
+            connection.autocommit = False 
+
+            return cursor, connection
         else:
             return databaseConstruction()
 
