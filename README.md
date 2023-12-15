@@ -6,3 +6,5 @@ Implementation of an automatic system for downloading, analyzing and archiving t
  * [PDC (IMAGING DATA COMMONS)](https://proteomic.datacommons.cancer.gov/pdc/)
 
 ## Project under development
+
+The project is currently being developed for a Windows environment
