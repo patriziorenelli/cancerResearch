@@ -47,19 +47,35 @@ def getPrograms():
     gdc_api_url = "https://pdc.cancer.gov/graphql?query={allPrograms (acceptDUA: true)  {program_id  program_submitter_id  name projects  {project_id  project_submitter_id  name  studies  {pdc_study_id study_id study_submitter_id submitter_id_name analytical_fraction study_name disease_types primary_sites embargo_date experiment_type acquisition_type} }}}"
     response = requests.get(gdc_api_url)
 
-    # FORSE BISOGNA FARE DIVERSE VOLTE LA QUERY E SALVARE IN STATUS I DATI 
+    # FORSE BISOGNA FARE DIVERSE VOLTE LA QUERY E SALVARE IN STATUS I DATI PER RECUPERARE POI L'OFFSET DELLE QUERY
 
     programs = []
+        
+    prog = json.loads(response.content.decode("utf-8"))
+
+    if "data" not in prog and "allPrograms" not in prog["data"]:
+        return 
+
 
     # Da qui possiamo prendere i programmi == project e tutti i studi associati ad ogni programma 
-    for program in json.loads(response.content.decode("utf-8"))["data"]["allPrograms"]:
+    for program in prog["data"]["allPrograms"]:
         studies = []
         projects = []
+        if "projects" not in program:
+            break
         for pr in program["projects"]:
+            if "studies" not in pr:
+                break 
             for st in pr["studies"]:
                 # Qui si puo' applicare il filtro sul primary_site che è relativo ai study 
+                if "study_id" not in st or "study_submitter_id" not in st or "study_name" not in st or "disease_types" not in st or "primary_sites" not in st:
+                    break 
                 studies.append(Study(st["study_id"], st["study_submitter_id"], st["study_name"], st["disease_types"],st["primary_sites"] ))
+            if "project_id" not in pr or "project_submitter_id" not in pr or "name" not in pr:                
+                break
             projects.append(Project(pr["project_id"], pr["project_submitter_id"], pr["name"], studies))
+            if "program_id" not in program or "program_submitter_id" not in program or "name" not in program:
+                break
         programs.append( Program(program["program_id"], program["program_submitter_id"],program["name"], projects ) )
 
     return programs
@@ -67,8 +83,7 @@ def getPrograms():
 # GENE PRESENTE SIA IN PDC CHE IN GDC select * from gene, gene_type where  name = 'A1BG'and gene.type = type_id
 
 
-
-# CAPIRE DOVE FARE LE INSERT IN DB PERCHE' SERVE ANCHE IL PROJECT (DECIDERE SE PER NOI IL PROJECT E' LO STUDY )
+# FARE SAVE DEI STUDY ALL'INTERNO DELLA TABELLA PROJECT 
 '''
 Funzione che ottiene i case relativi ad un singolo programma
 '''
@@ -78,6 +93,10 @@ def getCases(study):
     # Otteniamo il numero di cases relativi allo studio
     gdc_api_url = 'https://pdc.cancer.gov/graphql?query={paginatedCaseDemographicsPerStudy (study_id: "' + study +  '" offset: 0 limit: 1 acceptDUA: true) { total caseDemographicsPerStudy { case_id case_submitter_id disease_type primary_site demographics { demographic_id ethnicity gender demographic_submitter_id race cause_of_death days_to_birth days_to_death vital_status year_of_birth year_of_death age_at_index premature_at_birth weeks_gestation_at_birth age_is_obfuscated cause_of_death_source occupation_duration_years country_of_residence_at_enrollment} } pagination { count sort from page total pages size } }}'
     response = requests.get(gdc_api_url)
+    cases_number = json.loads(response.content.decode("utf-8"))
+
+    if "data" not in cases_number or "paginatedCaseDemographicsPerStudy" not in cases_number["data"] or "total" not in cases_number["data"]["paginatedCaseDemographicsPerStudy"]:
+        return 
     cases_number = str( json.loads(response.content.decode("utf-8"))["data"]["paginatedCaseDemographicsPerStudy"]["total"] )
     #print(json.loads(response.content.decode("utf-8"))["data"])
 
@@ -86,6 +105,10 @@ def getCases(study):
     # Otteniamo i cases relativi allo studio 
     gdc_api_url = 'https://pdc.cancer.gov/graphql?query={paginatedCaseDemographicsPerStudy (study_id: "' + study +  '" offset: 0 limit: ' + cases_number + ' acceptDUA: true) { total caseDemographicsPerStudy { case_id case_submitter_id disease_type primary_site demographics { demographic_id ethnicity gender demographic_submitter_id race cause_of_death days_to_birth days_to_death vital_status year_of_birth year_of_death age_at_index premature_at_birth weeks_gestation_at_birth age_is_obfuscated cause_of_death_source occupation_duration_years country_of_residence_at_enrollment} } pagination { count sort from page total pages size } }}'
     response = requests.get(gdc_api_url)
+    re = json.loads(response.content.decode("utf-8"))
+    if "data" not in re or "paginatedCaseDemographicsPerStudy" not in re["data"] or "total" not in re["data"]["paginatedCaseDemographicsPerStudy"]:
+        return
+
     for case in json.loads(response.content.decode("utf-8"))["data"]["paginatedCaseDemographicsPerStudy"]["caseDemographicsPerStudy"]:
         #print(case)
         # FARE CHECK SU DISEASE NEL DB E EVENTUALE INSERT 
@@ -161,27 +184,71 @@ def getSample(study):
 
 def getGenes():
 
-    # QUI BISOGNA CONSIDERARE L'OFFSET E I LIMIT DAL FILE 
+    # QUI BISOGNA CONSIDERARE L'OFFSET E I LIMIT DAL FILE status.txt
     gdc_api_url = 'https://pdc.cancer.gov/graphql?query={ getPaginatedGenes(offset: 0 limit: 100 acceptDUA: true) { total genesProper { gene_id gene_name NCBI_gene_id authority description organism chromosome locus proteins assays } pagination { count sort from page total pages size } } }'
     response = requests.get(gdc_api_url)
+    re = json.loads(response.content.decode("utf-8"))
+
+    if "data" not in re or "getPaginatedGenes" not in re["data"] or "genesProper" not in re["data"]["getPaginatedGenes"]:
+        return 
 
     for gene in  json.loads(response.content.decode("utf-8"))["data"]["getPaginatedGenes"]["genesProper"]:
-        #print(gene)
-        #print('\n')
         gene_name = gene["gene_name"]
         gdc_api_url= 'https://pdc.cancer.gov/graphql?query={geneSpectralCount (gene_name: "' + gene_name+ '" acceptDUA: true){gene_id gene_name NCBI_gene_id authority description organism chromosome locus proteins assays spectral_counts { project_submitter_id plex spectral_count distinct_peptide unshared_peptide study_submitter_id} }}'
         response = requests.get(gdc_api_url)
+        re = json.loads(response.content.decode("utf-8"))
+        if "data" not in re or "geneSpectralCount" not in re["data"]:
+            break
+        
+        geneSpectralCount = re["data"]["geneSpectralCount"]
 
-        print(json.loads(response.content.decode("utf-8"))["data"])
-        # DA QUI PRENDO study_submitter_id e i dati sui geni, proteine e peptide
+        #  QUI OPERAZIONI SUI GENI 
+
+# ---------   TEST --------------------
+        
+        # FARE RICHIESTA CON NUOVA API INDIVIDUATA E PRENDERE TUTTI I DATI 
+        #gdc_api_url = 'http://rest.ensembl.org/lookup/symbol/homo_sapiens/' + 'ASMTL' + '?content-type=application/json'
+        #dati_gene_ens = json.loads(requests.get(gdc_api_url).content.decode("utf-8"))
+
+        #print(dati_gene_ens)
+
+    
+        # https://www.ncbi.nlm.nih.gov/datasets/docs/v2/reference-docs/rest-api/#post-/gene
+
+        # VEDERE SE E' POSSIBILE PRENDER INFORMAZIONI ANCHE SULLE PROTEINE 
 
 
-    # ALLA FINE DELLA INSERT IN GENES AGGIORNARE IL FILE status.txt
+
+
+
+# ---------------- FINE TEST -------------------
+
+
+
+        gene_id = "ID"
+        # INSERT IN GENE usare gene_id, gene_name, type = DA PRENDERE NELL'API SOPRA DA FARE   E AGGIORNARE IL FILE status.txt
+
+        for genSpec in geneSpectralCount:
+            if "spectral_counts" not in genSpec or "proteins" not in genSpec:
+                break
+
+            proteins = (genSpec["proteins"]).split(";")
+            spectral_counts = genSpec["spectral_counts"]
+
+            for spec in spectral_counts:
+                if "study_submitter_id" not in spec or "spectral_count" not in spec or "distinct_peptide" not in spec or "unshared_peptide" not in spec:
+                   break 
+                study_submitter_id = spec["study_submitter_id"]
+                spectral_count = spec["spectral_count"]
+                distinct_peptide = spec["distinct_peptide"]
+                unshared_peptide = spec["unshared_peptide"]
+                # QUI FACCIAMO INSERT SULLA NUOVA TABELLA 
     pass
 
 
 def sviluppo():            
     programmi = getPrograms()
+    #print(len(programmi))
     for programma in programmi:
         #print("PROGRAMMA: "+ programma.program_name + " ID: " + str(programma.program_id))
         for progetto in programma.projects:
@@ -192,17 +259,10 @@ def sviluppo():
                 # QUI BISOGNA FARE INSERT PER LO STUDIO NELLA TABELLA PROJECT E DAL PRIMARY SITE DEL PROJECT FARE INSERT NELLA TABELLA PRIMARY_SITE
                 #getCases(studio.study_id)
                 #getSample(studio.study_id)
+
                 getGenes()
 
                 #print(studio.disease_types)
-
-'''
-    #  PER CONVERSIONE GENE NAME IN GENE ID IN STANDARD ENS
-    gdc_api_url = 'http://rest.ensembl.org/lookup/symbol/homo_sapiens/7SK?content-type=application/json'
-    response = requests.get(gdc_api_url)
-    print(json.loads(response.content.decode("utf-8")))
-'''
-    #print(programmi)
 
 
 
@@ -216,3 +276,6 @@ from analysis join data_category on data_category.category_id = data_category
 '''
 
 sviluppo()
+
+
+
