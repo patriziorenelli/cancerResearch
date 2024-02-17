@@ -69,7 +69,7 @@ def databaseCreation():
         conn = psycopg2.connect(database = "postgres", user = params.user, password = params.password , host = params.host , port = params.port)
         conn.autocommit = True
         cursor = conn.cursor()
-        sql = 'CREATE database "XDC"'
+        sql = 'CREATE database "GDC"'
         cursor.execute(sql)
         print("Database creato")
 
