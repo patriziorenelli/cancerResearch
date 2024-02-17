@@ -18,6 +18,7 @@ Gli passo params in modo da potervi accedere
 '''
 def download_and_process_expression_data(param):
 
+    #try:
 
         # Creo connessione con il database 
         cursor, conn = databaseConnection()
@@ -52,7 +53,8 @@ def download_and_process_expression_data(param):
                     "op": "in",
                     "content": {
                         "field": "data_type",
-                        "value": ["Gene Expression Quantification"]   # clsProtein Expression Quantification
+                        #"value": ["Gene Expression Quantification"]   # clsProtein Expression Quantification
+                        "value": ["Protein Expression Quantification"]   # clsProtein Expression Quantification
                     }
                 },
 
@@ -82,12 +84,15 @@ def download_and_process_expression_data(param):
             # Altri campi per ottenere maggiori informazioni sui file scaricati 
             "fields": "file_name,file_size,created_datetime,updated_datetime,data_type,experimental_strategy,data_category,cases.project.project_id,cases.case_id,cases.submitter_id,associated_entities.entity_submitter_id",
             "format": "JSON",
-            "size": "120000",  # Numero massimo di file da scaricare per richiesta
+            "size": "12000000",  # Numero massimo di file da scaricare per richiesta
             "pretty": "true"  # pretty indica che la response viene formattata con spazi aggiuntivi per migliorare la leggibilità
         }
         
-        response = requests.get(gdc_api_url, params=params)
-
+        try:
+            response = requests.get(gdc_api_url, params=params)
+        except:
+            print("Errore connessione server")
+            return 
 
         # Elaborazione dei dati e inserimento nel database
         for file_info in json.loads(response.content.decode("utf-8"))["data"]["hits"]:
@@ -165,10 +170,13 @@ def download_and_process_expression_data(param):
 
                                 if "gene_type"  in data_row:
                                     gene_type_id = getGeneType(data_row["gene_type"], cursor, conn)
+                                else:
+                                    continue
 
                                 if "gene_id" not in data_row or "gene_name" not in data_row:
                                     continue
 
+                                # SE QUI TRONCASSI AL PUNTO IN MODO DA OTTENERE IL GENE_ID CORRETTO CHE NON HA PEZZI DOPO IL . 
                                 gene_id = data_row["gene_id"]
                                 gene_name = data_row["gene_name"]
                                 # Inserisci il gene nel database
@@ -185,6 +193,8 @@ def download_and_process_expression_data(param):
                     elif type_id == 2:
                             # Inserimento dei dati di espressioni PROTEICHE nel database
                             for data_row in expression_data:
+                                #print(data_row)
+                                #print("\n")
                                 if "AGID" not in data_row:
                                     continue
 
@@ -194,7 +204,7 @@ def download_and_process_expression_data(param):
                                 if "lab_id" not in data_row or "catalog_number" not in data_row or "set_id" not in data_row or "peptide_target" not in data_row:
                                     continue
                                 # Inserisci la proteina nel database
-                                cursor.execute("INSERT INTO protein VALUES (%s, %s, %s, %s, %s) ON CONFLICT (agid) DO NOTHING;", (agid, data_row["lab_id"], data_row["catalog_number"], data_row["set_id"], data_row["peptide_target"]))
+                                cursor.execute("INSERT INTO protein_GDC VALUES (%s, %s, %s, %s, %s) ON CONFLICT (agid) DO NOTHING;", (agid, data_row["lab_id"], data_row["catalog_number"], data_row["set_id"], data_row["peptide_target"]))
 
                                 if  "protein_expression" in data_row:
                                     if data_row["protein_expression"] != "NaN":
@@ -208,7 +218,20 @@ def download_and_process_expression_data(param):
             conn.commit()
 
         print(f"Download, elaborazione e inserimento dei dati completati.")
+        
+'''
+    except Exception as error:
+        # Gestione generica degli errori
+        conn.rollback()
+        print(f"Errore sconosciuto: {error}")
 
+    finally:
+        # Ripristina l'autocommit
+        conn.autocommit = True
+        # Chiudi la connessione
+        cursor.close()
+        conn.close()
+    '''
 
 '''
 Funzione che ricerca i dati di un singolo progetto
@@ -223,11 +246,12 @@ def searchProject(id):
             "format": "JSON",
             "pretty": "true"
         }
+
         response = requests.get(project_url, params=params)
 
     except Exception as error:
         # Gestione generica degli errori
-        print(f"Errore sconosciuto: {error}")
+        print(f"Errore connessione server: {error}")
         return None 
 
 
@@ -266,7 +290,7 @@ def searchCase(id):
         response = requests.get(cases_url, params=params)
     except Exception as error:
         # Gestione generica degli errori
-        print(f"Errore sconosciuto: {error}")
+        print(f"Errore connessione server: {error}")
         return None 
 
     if response.status_code == 200:
@@ -310,7 +334,7 @@ def insertNewSamples(samples, case_id, cursor):
     inserisci_porzione = "INSERT INTO portion VALUES (%s, %s)"
     inserisci_analita = "INSERT INTO analyte VALUES (%s, %s, %s)"
     inserisci_aliquota = "INSERT INTO aliquote VALUES (%s, %s, %s)"
-
+    #print(samples)
     for sample in samples:
 
         if "submitter_id" not in sample:
@@ -388,7 +412,7 @@ def downloadFile(file_id, type_id):
         response = requests.get(file_url)
     except Exception as error:
         # Gestione generica degli errori
-        print(f"Errore sconosciuto: {error}")
+        print(f"Errore connessione server: {error}")
         return None
 
     if response.status_code == 200:
@@ -416,6 +440,7 @@ print("CONNESSIONE AL DATABASE STABILITA")
 '''
 
 
-# SE IL DB NON ESISTE E SI LANCIA DIRETTAMENTE QUESTA FUNZIONE, ALLA PRIMA INSERT ANDRA' IN ERRORE PERCHE' NON TROVERA' I DATI -> VALUTARE SE E' NECESSARIO CREARE UNA NUOVA CONNESSIONE COL DB E POI PROCEDERE 
+'''
 if __name__ == '__main__':
     download_and_process_expression_data(params)
+'''

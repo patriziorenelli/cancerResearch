@@ -8,6 +8,45 @@ def checkExistBiospecimen(id, cursor):
         return False
     return True
 
+
+def insertNewBiospecimen(sample_id, case_submitter_id, type, cursor,conn):
+    query = "INSERT INTO public.biospecimen VALUES ('{}', '{}', '{}') ON CONFLICT (id) DO NOTHING;".format(sample_id, case_submitter_id, type)
+    cursor.execute(query)
+    conn.commit()
+
+'''
+Verifica se esiste un Aliquote all'inteno del database
+'''
+def checkExistAliquote(id, cursor):
+    cursor.execute("SELECT COUNT(*) FROM aliquote WHERE aliquote_id = %s", (id,))
+    result = cursor.fetchone()
+    if result[0] == 0: 
+        return False
+    return True
+
+
+'''
+Funzione che si occupa di inserire un nuovo analyte  nel database 
+'''
+def insertNewAnalyte(sample_id, analyte_id, concentration, cursor,conn):
+    cursor.execute("INSERT INTO public.analyte VALUES (%s, %s, %s) ON CONFLICT (analyte_id) DO NOTHING;", ( sample_id, analyte_id, concentration,))
+    conn.commit()
+
+
+'''
+Funzione che si occupa di inserire un nuovo portion  nel database 
+'''
+def insertNewPortion(sample_id, analyte_id, cursor,conn):
+    cursor.execute("INSERT INTO public.portion VALUES (%s, %s) ON CONFLICT (portion_id) DO NOTHING;", ( sample_id, analyte_id,))
+    conn.commit()
+
+'''
+Funzione che si occupa di inserire un nuovo aliquote nel database 
+'''
+def insertNewAliquote(sample_id, aliquote_id, concentration, cursor,conn):
+    cursor.execute("INSERT INTO public.aliquote VALUES (%s, %s, %s) ON CONFLICT (aliquote_id) DO NOTHING;", ( sample_id, aliquote_id, concentration,))
+    conn.commit()
+
 '''
 Verifica se esiste un progetto all'interno del database
 '''
@@ -18,9 +57,14 @@ def checkExistProject(id, cursor):
         return False
     return True
 
+
+'''
+Funzione che si occupa di inserire un nuovo progetto nel database 
+'''
 def insertNewProject(id, name, cursor,conn):
     query = "INSERT INTO public.project VALUES ('{}', '{}') ON CONFLICT (project_id) DO NOTHING;".format(id,name)
     cursor.execute(query)
+    conn.commit()
 
 '''
 Verifica se esiste un caso all'interno del database
@@ -34,17 +78,90 @@ def checkExistCase(id, cursor):
 
 
 '''
+Funzione che si occupa di inserire un nuovo case nel database 
+'''
+def insertNewCase(id, ethnicity, gender, race, vital_status, project, site, disease, cursor,conn):
+    query = "INSERT INTO public.case VALUES ('{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}') ON CONFLICT (case_id) DO NOTHING;".format(id, ethnicity, gender, race, vital_status, project, site, disease)
+    cursor.execute(query)
+    conn.commit()
+
+'''
+Inserisce un nuovo sample all'interno del database
+'''
+def insertNewSample(sample_id, sample_type_id, tumor_code_id, cursor, conn):
+    cursor.execute("INSERT INTO sample VALUES (%s, %s, %s) ON CONFLICT (sample_id) DO NOTHING;", (sample_id, sample_type_id, tumor_code_id))
+    conn.commit()
+
+'''
 Verifica se esiste un file all'interno del database
 '''
 def checkExistFile(id, cursor):
-
     cursor.execute("SELECT COUNT(*) FROM analysis WHERE file_id = %s", (id,))
     result = cursor.fetchone()
     if result[0] == 0: 
         return False
     return True
 
+'''
+Cerca all'interno del database l'id relativo al type di un sample
+'''
+def searchSampleTypeId(type,cursor):
+    q = "SELECT type_id FROM sample_type WHERE LOWER(type) = LOWER('{}')"
+    cursor.execute(q.format(type))
+    sample_type_id =  cursor.fetchone()
+    return sample_type_id
 
+'''
+Inserisce un nuovo sample type all'interno del database
+'''
+def insertNewSampleType(type_id, type, cursor, conn):
+    query = "INSERT INTO public.sample_type VALUES ('{}', '{}') ON CONFLICT (type_id) DO NOTHING;".format(type_id, type)
+    cursor.execute(query)
+    conn.commit()
+
+'''
+Verifica se esiste un tumor all'interno del database
+'''
+def checkExistTumor(id, cursor):
+    cursor.execute("SELECT COUNT(*) FROM tumor WHERE tumor_code_id = %s", (id,))
+    result = cursor.fetchone()
+    if result[0] == 0: 
+        return False
+    return True
+
+'''
+Inserisce una nuova terna gene - proteina - studio all'interno del database
+'''
+def insertNewGeneProteinStudy(gene,protein,study,cursor,conn):
+    query = "INSERT INTO public.protein_gene VALUES ('{}', '{}', '{}') ON CONFLICT (gene,study, protein) DO NOTHING;".format(gene, study, protein )
+    cursor.execute(query)
+    conn.commit()
+
+
+'''
+Funzione che si occupa di inserire un nuovo tumore nel database 
+'''
+def insertNewTumor(id, tumor_code, tumor_description, cursor,conn):
+    query = "INSERT INTO public.tumor VALUES ('{}', '{}', '{}') ON CONFLICT (tumor_code_id) DO NOTHING;".format(id, tumor_code, tumor_description)
+    cursor.execute(query)
+    conn.commit()
+
+'''
+Funzione che si occupa di verificare l'esistenza di un gene all'interno del database 
+'''
+def checkExistGene(id, cursor):
+    cursor.execute("SELECT COUNT(*) FROM gene WHERE gene_id = %s", (id,))
+    result = cursor.fetchone()
+    if result[0] == 0: 
+        return False
+    return True
+
+'''
+funzione che si occupa di salvare un nuovo gene all'interno del database
+'''
+def insertNewGene(gene_id, gene_name, gene_type_id, cursor, conn):
+    cursor.execute("INSERT INTO gene VALUES (%s, %s, %s) ON CONFLICT (gene_id) DO NOTHING;", (gene_id, gene_name , gene_type_id))
+    conn.commit()
 '''
 Funzione che si occupa di controllare se un primary site è presente nel db, se non lo trova invoca la funzione che lo aggiunge, ottiene il suo nuovo id e lo restituisce 
 '''

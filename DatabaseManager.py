@@ -30,7 +30,10 @@ def databaseConstruction():
                     conn.close()
                     cursor, conn = databaseConnection()
                     # Carico le singole query da eseguire per creare le tabelle 
+                    
                     query = open(".\\load\\Schema.sql", "r").read()
+                    #query = open(".\\Backup\\schema_NUOVO_DA_TESTARE.sql", "r").read()
+
                     query = query.split(";")
                     # Eseguo le singole query e controllo il loro risultato 
                     for x in query: 
@@ -50,7 +53,7 @@ def databaseConstruction():
 
                         
                         if fillingBasicTable(cursor, conn):
-                            print("Errore nella riempimento delle tabelle base")
+                            #print("Errore nella riempimento delle tabelle base")
                             cursor = None
                             conn = None
                         else:
@@ -66,7 +69,7 @@ def databaseCreation():
         conn = psycopg2.connect(database = "postgres", user = params.user, password = params.password , host = params.host , port = params.port)
         conn.autocommit = True
         cursor = conn.cursor()
-        sql = 'CREATE database "GDC"'
+        sql = 'CREATE database "XDC"'
         cursor.execute(sql)
         print("Database creato")
 
@@ -155,6 +158,8 @@ def saveDatabase():
     timestamp = datetime.datetime.now()
     timestamp = str(timestamp.day) + "-" + str(timestamp.month) + "-" + str(timestamp.year) + "_" + str(timestamp.hour) + "-" + str(timestamp.minute) + "-" + str(timestamp.second)  
     # Questa è la riga di comando fondamentale che attraverso il tool pg_dump nativo di postgres esegue il backup del database 
+    # Necessario cambiare path per pg_dump.exe e quello da cui si recupera il file (il path indicato dopo >)
+    # Necessarop cambiare credenziali di accesso a postgress nel path postgresql://{username}:{password}@localhost:{port}/GDC
     comando = '"D:\\Program Files\\PostgreSQL\\16\\bin\\pg_dump.exe" postgresql://postgres:1234@localhost:5432/GDC > "d:\\users\\patrizio\\desktop\\Tirocinio\\Reale\\Backup\\Backup_"'+ timestamp
     
     os.system(('cmd /C {}').format(comando))
@@ -193,6 +198,8 @@ def reloadData():
 
     print(dict_backup_date[0])
     # Questa è la riga di comando fondamentale che attraverso psql di postgres esegue la restore del database dal backup più recente 
+    # Necessario cambiare path per psql.exe e quello da cui si recupera il file (il path indicato dopo >)
+    # Necessarop cambiare credenziali di accesso a postgress nel path postgresql://{username}:{password}@localhost:{port}/GDC
     comando = '"D:\\Program Files\\PostgreSQL\\16\\bin\\psql.exe" postgresql://postgres:1234@localhost:5432/GDC < "d:\\users\\patrizio\\desktop\\Tirocinio\\Reale\\Backup\\"' + dict_backup_date[0]
     os.system(('cmd /C {}').format(comando))
 
@@ -200,3 +207,4 @@ def reloadData():
 #reloadData()
 #databaseConnection()
 #saveDatabase()
+#databaseCreation()
