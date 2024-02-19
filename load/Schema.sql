@@ -141,7 +141,7 @@ CREATE TABLE IF NOT EXISTS public.project
     CONSTRAINT "Project_pkey" PRIMARY KEY (project_id)
 );
 
-CREATE TABLE IF NOT EXISTS public.protein
+CREATE TABLE IF NOT EXISTS public.protein_GDC
 (
     agid text COLLATE pg_catalog."default" NOT NULL,
     lab_id integer,
@@ -182,20 +182,74 @@ CREATE TABLE IF NOT EXISTS public.tumor
     CONSTRAINT "Tumor_pkey" PRIMARY KEY (tumor_code_id)
 );
 
-ALTER TABLE IF EXISTS public.aliquote
-    ADD CONSTRAINT aliquote_aliquote_id_fkey FOREIGN KEY (aliquote_id)
-    REFERENCES public.biospecimen (id) MATCH SIMPLE
+CREATE TABLE public.protein_PDC (
+    gene_id text NOT NULL,
+    label text COLLATE pg_catalog."default",
+    spectral_count numeric,
+    distinct_pepetides numeric,
+    unshared_peptides numeric,
+    log2_ratio numeric,
+    unshared_log2_ratio numeric,
+    aliquot text COLLATE pg_catalog."default",
+    project_id text NOT NULL,
+    CONSTRAINT "protein_pdc_pkey" PRIMARY KEY (gene_id, project_id, aliquot)
+
+);
+
+CREATE TABLE public.protein_gene (
+    gene text NOT NULL,
+    study text NOT NULL,
+    protein text NOT NULL
+
+);
+
+ALTER TABLE ONLY public.protein_gene
+    ADD CONSTRAINT protein_gene_pkey PRIMARY KEY (gene, protein,study);
+
+ALTER TABLE ONLY public.protein_gene
+    ADD CONSTRAINT gene FOREIGN KEY (gene) REFERENCES public.gene(gene_id);    
+
+ALTER TABLE ONLY public.protein_gene
+    ADD CONSTRAINT study FOREIGN KEY (study) REFERENCES public.project(project_id);
+
+
+ALTER TABLE IF EXISTS public.protein_PDC
+    ADD CONSTRAINT Aliquote FOREIGN KEY (aliquot)
+    REFERENCES public.aliquote (aliquote_id) MATCH SIMPLE
     ON UPDATE NO ACTION
     ON DELETE NO ACTION
     NOT VALID;
 
 
-ALTER TABLE IF EXISTS public.aliquote
-    ADD CONSTRAINT aliquote_analyte_id_fkey FOREIGN KEY (analyte_id)
-    REFERENCES public.analyte (analyte_id) MATCH SIMPLE
+ALTER TABLE IF EXISTS public.protein_PDC
+    ADD CONSTRAINT Gene FOREIGN KEY (gene_id)
+    REFERENCES public.gene (gene_id) MATCH SIMPLE
     ON UPDATE NO ACTION
     ON DELETE NO ACTION
     NOT VALID;
+
+ALTER TABLE IF EXISTS public.protein_PDC
+    ADD CONSTRAINT Project FOREIGN KEY (project_id)
+    REFERENCES public.project (project_id) MATCH SIMPLE
+    ON UPDATE NO ACTION
+    ON DELETE NO ACTION
+    NOT VALID;
+
+
+--ALTER TABLE IF EXISTS public.aliquote
+--    ADD CONSTRAINT aliquote_aliquote_id_fkey FOREIGN KEY (aliquote_id)
+--    REFERENCES public.biospecimen (id) MATCH SIMPLE
+--    ON UPDATE NO ACTION
+--    ON DELETE NO ACTION
+--    NOT VALID;
+
+
+--ALTER TABLE IF EXISTS public.aliquote
+--    ADD CONSTRAINT aliquote_analyte_id_fkey FOREIGN KEY (analyte_id)
+--    REFERENCES public.analyte (analyte_id) MATCH SIMPLE
+--    ON UPDATE NO ACTION
+--    ON DELETE NO ACTION
+--    NOT VALID;
 
 
 ALTER TABLE IF EXISTS public.analysis
@@ -341,7 +395,7 @@ ALTER TABLE IF EXISTS public.protein_expression_file
 
 ALTER TABLE IF EXISTS public.protein_expression_file
     ADD CONSTRAINT "Protein" FOREIGN KEY (protein)
-    REFERENCES public.protein (agid) MATCH SIMPLE
+    REFERENCES public.protein_GDC (agid) MATCH SIMPLE
     ON UPDATE NO ACTION
     ON DELETE NO ACTION;
 
