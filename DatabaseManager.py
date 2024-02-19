@@ -75,6 +75,7 @@ def databaseCreation():
 
         # Se esiste un backup del database lo ripristino 
         backup_file = [stringa for stringa in os.listdir(".//Backup") if stringa.startswith("Backup")]
+        backup_file = []
         if len(backup_file) > 0:
             print("RECUPERO DATI DAL BACKUP: ")
             reloadData()
@@ -205,6 +206,6 @@ def reloadData():
 
 
 #reloadData()
-#databaseConnection()
+databaseConnection()
 #saveDatabase()
 #databaseCreation()

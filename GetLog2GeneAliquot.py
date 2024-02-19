@@ -6,7 +6,7 @@ from scipy.stats import zscore
 import json
 import os 
 from DatabaseGenericInteraction import * 
-
+import time 
 # Funzione per scaricare gli Ensembl Id di tutti i singoli geni, questo è necesario poichè la query utilizzata sotto ritorna solo i nomi dei geni
 # Funzione necessaria perchè non è certo che un determinato gene indicato sotto sia già stato salvato all'interno del database e quindi non si può fare una traduzione attraverso il database direttamente 
 def getEnsemblId(gene_name):
@@ -48,7 +48,7 @@ def query_pdc(pdc_study_id, data_type):
 
 # Per ogni studio possiamo ottenere i log2_ratio e gli unshared_log2_ratio
 def getLog2RatioInfo(program_pdc, project_id, cursor, conn):
-    data_type = [ 'log2_ratio', 'unshared_log2_ratio']
+    data_type = [ 'log2_ratio', 'unshared_log2_ratio' ]
     geni_trans = dict()
     for type in data_type:
         decoded = query_pdc(program_pdc, type)
@@ -129,7 +129,7 @@ def getLog2RatioInfo(program_pdc, project_id, cursor, conn):
         # numero colonne print(len(aliquot))
         # numero righe print(len(ga))
 
-        print(len(ga), len(aliquot), len(gene_name))
+       # print(len(ga), len(aliquot), len(gene_name))
 
         gen_key = list(geni_trans.keys())
         # BISOGNA RECUPERARE I GENE_ID DEI GENE_NAME
@@ -140,14 +140,32 @@ def getLog2RatioInfo(program_pdc, project_id, cursor, conn):
                 if gene_name[x][0] not in gen_key or geni_trans[gene_name[x][0]] == None:
                     continue
 
-                # Effettuiamo un controllo se tutti i valori che dovranno essere usati come primary key sono presenti nel database  
-                if checkExistAliquote(aliq, cursor) and checkExistGene(geni_trans[gene_name[x][0]], cursor) and checkExistProject(project_id, cursor):
-                    #print( "GENE: " + geni_trans[gene_name[x][0]] + "   ALIQUOT: " +  aliq + " VALORE: "+ str((ga.iloc[x])[aliq]))
+                print( geni_trans[gene_name[x][0]] +  " | " + str((ga.iloc[x])[aliq]) +  " | " +  aliq +  " | " +  project_id + " | " +  str(checkExistBiospecimen(aliq, cursor) and checkExistGene(geni_trans[gene_name[x][0]], cursor) and checkExistProject(project_id, cursor) and str((ga.iloc[x])[aliq]) != "NaN" and checkExistAliquote(aliq, cursor)) )  
+                print(checkExistGene(geni_trans[gene_name[x][0]], cursor), checkExistProject(project_id, cursor), str((ga.iloc[x])[aliq]) != "NaN" , checkExistAliquote(aliq, cursor))      
+                #if str((ga.iloc[x])[aliq]) == "NaN":
+                    #time.sleep(10)
+                    #break
+                print(program_pdc, project_id)
+                time.sleep(2)
+
+                # Effettuiamo un controllo se tutti i valori che dovranno essere usati come primary key sono presenti nel database, in modo da evitare errori nell'esecuzione delle insert o update 
+                if checkExistGene(geni_trans[gene_name[x][0]], cursor) and checkExistProject(project_id, cursor) and str((ga.iloc[x])[aliq]) != "NaN" and checkExistAliquote(aliq, cursor):
+                    #print( geni_trans[gene_name[x][0]] +  " | " + str((ga.iloc[x])[aliq]) +  " | " +  aliq +  " | " +  project_id)
+
+
+
                     # controllo quale colonna è da aggiornare 
                     if type == 'log2_ratio':
-                        query = "UPDATE  public.preotein_PDC SET log2_ratio = '{}' WHERE gene_id = '{}' and aliquot = '{}' and project_id = '{}' ;".format(str((ga.iloc[x])[aliq]), geni_trans[gene_name[x][0]], aliq, project_id )
+                        if checkExistProtein_PDC(geni_trans[gene_name[x][0]], project_id, aliq,cursor):
+                            query = "UPDATE  public.protein_PDC SET log2_ratio = {} WHERE gene_id = '{}' and aliquot = '{}' and project_id = '{}' ;".format(str((ga.iloc[x])[aliq]), geni_trans[gene_name[x][0]], aliq, project_id )
+                        else:
+                            query = "INSERT INTO public.protein_PDC (gene_id, log2_ratio, aliquot, project_id) VALUES ('{}', {}, '{}', '{}') ON CONFLICT (gene_id,project_id,aliquot) DO NOTHING;".format(geni_trans[gene_name[x][0]], str((ga.iloc[x])[aliq]), aliq, project_id )
                     else: 
-                        query = "UPDATE  public.preotein_PDC SET unshared_log2_ratio = '{}' WHERE gene_id = '{}' and aliquot = '{}' and project_id = '{}' ;".format(str((ga.iloc[x])[aliq]), geni_trans[gene_name[x][0]], aliq, project_id )
+                        if checkExistProtein_PDC(geni_trans[gene_name[x][0]], project_id, aliq,cursor):
+                            query = "UPDATE  public.protein_PDC SET unshared_log2_ratio = {} WHERE gene_id = '{}' and aliquot = '{}' and project_id = '{}' ;".format(str((ga.iloc[x])[aliq]), geni_trans[gene_name[x][0]], aliq, project_id )
+                        else:
+                            query = "INSERT INTO public.protein_PDC (gene_id, unshared_log2_ratio, aliquot, project_id) VALUES ('{}', '{}', '{}', '{}') ON CONFLICT (gene_id,project_id,aliquot) DO NOTHING;".format(geni_trans[gene_name[x][0]], str((ga.iloc[x])[aliq]), aliq, project_id )
+
                     print(query)
                     cursor.execute(query)
                     conn.commit()
@@ -155,5 +173,5 @@ def getLog2RatioInfo(program_pdc, project_id, cursor, conn):
         
 
 #getLog2RatioInfo('PDC000127', None, None,None)
-                
+                    
 

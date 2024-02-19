@@ -77,13 +77,13 @@ def GetGeneProInformation(geneName, gene_id, cursor, conn):
                   # Ci consente di individuare la posizione corretta degli elementi all'interno della tabella fare un for che trova la posizione corretta da usare se y*1 y*2 y*3 y*4 y*5 y*6 y*7 y*8 y*9 y*10 y*11
                   for x in range(0, 12):
                         # Controlliamo il valore di label per capire se mancano dei dati nella tabella di pdc
-                        if valori[0+y*x].lower() in lab_c:
+                        if  y*x < len(valori) and valori[0+y*x].lower() in lab_c:
                               break 
                         else:
                               pass         
                   const = x   
                   # Controlliamo il valore di label per capire se mancano dei dati nella tabella di pdc
-                  if valori[0+y*const].lower() in lab_c:
+                  if y*const < len(valori) and  valori[0+y*const].lower() in lab_c:
                         # I valori da salvare nella tabella 
                         label = valori[0+y*const]
                         study = valori[1+y*const]
@@ -91,7 +91,7 @@ def GetGeneProInformation(geneName, gene_id, cursor, conn):
                         distinct_peptides = valori[4+y*const]
                         unshared_peptides = valori[5+y*const]
 
-                        if checkExistProject(study, cursor)  and checkExistAliquote(aliquot[y], cursor) and checkExistProject(study, cursor):
+                        if checkExistProject(study, cursor)  and checkExistAliquote(aliquot[y], cursor) and checkExistGene(gene_id, cursor):
                               #print(label +" , "+ study+" , "+ spectral_count+" , "+ distinct_peptides+" , "+ unshared_peptides)
                               # facciamo insert nella tabella protein_PDC 
                               query = "INSERT INTO public.protein_PDC VALUES ('{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}') ON CONFLICT (gene_id,project_id,aliquot) DO NOTHING;".format(gene_id, label, spectral_count, distinct_peptides, unshared_peptides, 0, 0, aliquot[y], study )

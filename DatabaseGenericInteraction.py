@@ -70,7 +70,9 @@ def insertNewProject(id, name, cursor,conn):
 Verifica se esiste un caso all'interno del database
 '''
 def checkExistCase(id, cursor):
-    cursor.execute("SELECT COUNT(*) FROM public.case WHERE case_id = %s", (id,))
+    query = "SELECT COUNT(*) FROM public.case WHERE case_id ='{}'".format(id)
+    #print(query)
+    cursor.execute(query)
     result = cursor.fetchone()
     if result[0] == 0: 
         return False
@@ -82,6 +84,7 @@ Funzione che si occupa di inserire un nuovo case nel database
 '''
 def insertNewCase(id, ethnicity, gender, race, vital_status, project, site, disease, cursor,conn):
     query = "INSERT INTO public.case VALUES ('{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}') ON CONFLICT (case_id) DO NOTHING;".format(id, ethnicity, gender, race, vital_status, project, site, disease)
+    #print(query)
     cursor.execute(query)
     conn.commit()
 
@@ -134,9 +137,17 @@ Inserisce una nuova terna gene - proteina - studio all'interno del database
 '''
 def insertNewGeneProteinStudy(gene,protein,study,cursor,conn):
     query = "INSERT INTO public.protein_gene VALUES ('{}', '{}', '{}') ON CONFLICT (gene,study, protein) DO NOTHING;".format(gene, study, protein )
+    #print(query)
     cursor.execute(query)
     conn.commit()
 
+
+def checkExistProtein_PDC(gene_id, project_id, aliquot,cursor):
+    cursor.execute("SELECT COUNT(*) FROM protein_pdc WHERE gene_id = %s and aliquot = %s and project_id = %s", (gene_id,aliquot, project_id,))
+    result = cursor.fetchone()
+    if result[0] == 0: 
+        return False
+    return True
 
 '''
 Funzione che si occupa di inserire un nuovo tumore nel database 
