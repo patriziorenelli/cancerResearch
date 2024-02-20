@@ -5,7 +5,6 @@ from requests_html import *
 from DatabaseGenericInteraction import * 
 from GetGeneProtInformation import *
 from GetLog2GeneAliquot import *
-import time 
 
 
 #  I dati su PDC girano intorno ai singoli studi, organizzando i dati in studi basati su su caratteristiche come proteoma o PTM e tipi sperimentali come senza etichetta o TMT 
@@ -162,7 +161,7 @@ def getSample(study, cursor, conn):
                 if sample_type_id == None:
                     sample_type_id = searchSampleTypeId(sample_type, cursor)
                     if sample_type_id == None:
-                            continue
+                            sample_type_id = None
                     else:
                         sample_type_id = sample_type_id[0] 
 
@@ -185,28 +184,24 @@ def getSample(study, cursor, conn):
                     # Effettuo comunque la conversione del sample_type_id nel sample_type_id ottenuto dal database ottenuti attraverso il sample_type
                     # Questa azione è necessaria poichè potrebbero esserci sample_type_id che sono collegati ad un sample_type che è salvato nel database con un altro sample_type_id causando errori nel momento dell'insermento nel database 
                     sample_type_id =  searchSampleTypeId(sample_type, cursor)
-                    pass
-                
+
+
                 # sample['sample_submitter_id'] può essere un'array quindi bisogna fare uno split su , e fare l'insert per i singoli samp in sample['sample_submitter_id]
                 for samp in sample['sample_submitter_id'].split(','):
                     #print("EILA " + samp)
                     sample_id =  samp
                     #print( sample_id, sample_type_id, tumor_code_id, study)
-                    if not checkExistBiospecimen(sample_id, cursor):
-                        if checkExistCase(case_submitter_id, cursor):
+
+                    # 2 IF DA RIATTIVARE -> SI POSSONO LASCIARE ANCHE COSI' TANTO LE QUERY HANNO LE CLAUSOLO ON CONFLICT 
+                    # TANTO COSI' EVITEREMMO TENTATIVI DI INSERT, MA FAREMMO COMUNQUE 2 SELECT SEMPRE + EVENTUALMENTE 5 INSERT IN CASO DI ESITO POSITIVO DEI CHECK 
+                    #if not checkExistBiospecimen(sample_id, cursor):
+                    #    if checkExistCase(case_submitter_id, cursor):
                             
-                            #print(sample_id, sample_type_id, tumor_code_id)
-                            insertNewBiospecimen(sample_id, case_submitter_id, 1, cursor, conn)
-                            #print(sample_type_id, type(sample_type_id)  )
-                            #print(sample_type_id, type(sample_type_id), )
-                            insertNewSample(sample_id, sample_type_id, tumor_code_id, cursor, conn)
-                            #print(sample_id)
-                            for aliquote in sample['aliquots']:
+                    insertNewBiospecimen(sample_id, case_submitter_id, 1, cursor, conn)
+                    insertNewSample(sample_id, sample_type_id, tumor_code_id, cursor, conn)
+                    for aliquote in sample['aliquots']:
                                 concentration = aliquote['concentration']
                                 aliquote_id = aliquote['aliquot_submitter_id']
-                                #print(sample_id)
-                                #print(sample_id, aliquote_id, concentration, str(concentration == None))
-
                                 # In PDC non abbiamo questi dati separati quindi l'unico modo per rispettare i vincoli imposti dal database per la parte di GDC è quella di creare portion e analyte fittizi se no ci basterebbe aliquote
                                 insertNewPortion(sample_id, sample_id, cursor, conn)
                                 insertNewAnalyte(sample_id, sample_id, concentration, cursor,conn)
@@ -219,21 +214,35 @@ Funzione che ottiene i dati dei geni disponibili
 '''
 def getGenes(cursor,conn):
     # QUI BISOGNA CONSIDERARE L'OFFSET E I LIMIT DAL FILE status.txt
-    gdc_api_url = 'https://pdc.cancer.gov/graphql?query={ getPaginatedGenes(offset: 0 limit: 1000 acceptDUA: true) { total genesProper { gene_id gene_name NCBI_gene_id authority description organism chromosome locus proteins assays } pagination { count sort from page total pages size } } }'
+    # offset impostato a x poichè sto scaricando in diverse volte i geni, dovrebbe essere impostato a 0
+    gdc_api_url = 'https://pdc.cancer.gov/graphql?query={ getPaginatedGenes(offset: 3500 limit: 20000 acceptDUA: true) { total genesProper { gene_id gene_name NCBI_gene_id authority description organism chromosome locus proteins assays } pagination { count sort from page total pages size } } }'
     response = requests.get(gdc_api_url)
     re = json.loads(response.content.decode("utf-8"))
 
     if "data" not in re or "getPaginatedGenes" not in re["data"] or "genesProper" not in re["data"]["getPaginatedGenes"]:
         return 
+    
+    # CFAP45
+
+    geni_found = dict()
+    all_program = dict()
+
 
     for gene in  json.loads(response.content.decode("utf-8"))["data"]["getPaginatedGenes"]["genesProper"]:
         gene_name = gene["gene_name"]
         print(gene_name)
 
         gdc_api_url= 'https://pdc.cancer.gov/graphql?query={geneSpectralCount (gene_name: "' + gene_name+ '" acceptDUA: true){gene_id gene_name NCBI_gene_id authority description organism chromosome locus proteins assays spectral_counts { project_submitter_id plex spectral_count distinct_peptide unshared_peptide study_submitter_id pdc_study_id} }}'
+        # mettere il check di none  
         response = requests.get(gdc_api_url)
-        re = json.loads(response.content.decode("utf-8"))
 
+        if response == None or response.content == None:
+            print(response, response.content)
+            continue
+        try:
+            re = json.loads(response.content.decode("utf-8"))
+        except:
+             continue
         
         if "data" not in re or "geneSpectralCount" not in re["data"]:
             break
@@ -256,13 +265,16 @@ def getGenes(cursor,conn):
 # ---------------------------------------
             # Ottengo i submitter_id che identificano i vari studi all'interno del database
             # Necessario poichè la query per i geni ottiene soltanto i pdc_study_id
-            all_program = dict()
             gdc_api_url = "https://pdc.cancer.gov/graphql?query={allPrograms (acceptDUA: true)  {program_id  program_submitter_id  name projects  {project_id  project_submitter_id  name  studies  {pdc_study_id study_id study_submitter_id submitter_id_name analytical_fraction study_name disease_types primary_sites embargo_date experiment_type acquisition_type} }}}"
             response = requests.get(gdc_api_url)
+            if response == None or response.content == None:
+                print(response, response.content)
+                continue
+
             prog = json.loads(response.content.decode("utf-8"))
 
             if "data" not in prog and "allPrograms" not in prog["data"]:
-                return 
+                continue 
 
             # Da qui possiamo prendere i programmi == project e tutti i studi associati ad ogni programma 
             for program in prog["data"]["allPrograms"]:
@@ -274,7 +286,7 @@ def getGenes(cursor,conn):
                         break 
                     for st in pr["studies"]:
                         # Qui si puo' applicare il filtro sul primary_site che è relativo ai study 
-                        if "study_id" not in st or "study_submitter_id" not in st or "pdc_study_id" not in st :
+                        if "study_submitter_id" not in st or "pdc_study_id" not in st :
                             break 
                         all_program[st["pdc_study_id"]] = st["study_submitter_id"]
 
@@ -301,7 +313,7 @@ def getGenes(cursor,conn):
                 gene_id = (gene_tr["reports"][0]["gene"]["ensembl_gene_ids"])[0]
                 #print(gene_id, gene_name, gene_tr["reports"][0]["gene"]["type"], getGeneType(gene_tr["reports"][0]["gene"]["type"], cursor, conn))
                 insertNewGene(gene_id, gene_name, getGeneType(gene_tr["reports"][0]["gene"]["type"], cursor, conn), cursor, conn)
-                
+                geni_found['gene_id'] = gene_name
                 #In gene avremo comunque situazioni del genere:
                 #ENSG00000109576.14   AADAT 1  -> Causato dalle transcription che sfrutta GDC 
                 #ENSG00000109576    AADAT 1
@@ -317,24 +329,66 @@ def getGenes(cursor,conn):
                                 insertNewGeneProteinStudy(gene_id, prot, all_program[st], cursor, conn)
                                 #print(gene_id, prot, all_program[st])
 
-                # FUNZIONA -> DA RIATTIVARE 
-                #GetGeneProInformation(gene_name, gene_id, cursor, conn)
-                
-            # FUNZIONE 
-            for st in range(0, len(all_program) ):
-                    key = list(all_program.keys())[st]
-                    getLog2RatioInfo(key, all_program[key], cursor, conn) 
-            
+                 
+    '''
+    #   Con la funzione che sfrutta selenium                  
+    for gen in list(geni_found.keys()):
+        GetGeneProInformation(geni_found[gen], gen, cursor, conn)
 
-            #else:
-                #pass
+    # Con la funzione per la raccolta dei log2
+    for st in range(0, len(all_program) ):
+            key = list(all_program.keys())[st]
+            getLog2RatioInfo(key, all_program[key], cursor, conn) 
+    '''
         
     pass
 
+# PUO' POPOLARE LA TABELLA PROTEIN_PDC IN MODO AUTONOMO  
+def getProteinInfo(cursor, conn):
+    geni_found = dict()
+    # name # id
+    cursor.execute("SELECT * FROM gene ")
+    result = cursor.fetchall()
+    for x in result:
+         geni_found[x[0]] = x[1]
+         #print(x)
+
+    for gen in list(geni_found.keys()):
+        #GetGeneProInformation(geni_found[gen], gen, cursor, conn)
+        pass
+    all_program = dict()
+    gdc_api_url = "https://pdc.cancer.gov/graphql?query={allPrograms (acceptDUA: true)  {program_id  program_submitter_id  name projects  {project_id  project_submitter_id  name  studies  {pdc_study_id study_id study_submitter_id submitter_id_name analytical_fraction study_name disease_types primary_sites embargo_date experiment_type acquisition_type} }}}"
+    response = requests.get(gdc_api_url)
+    #print(response, response.content)
+
+
+    prog = json.loads(response.content.decode("utf-8"))
+
+
+
+            # Da qui possiamo prendere i programmi == project e tutti i studi associati ad ogni programma 
+    for program in prog["data"]["allPrograms"]:
+                studies = []
+                if "projects" not in program:
+                    break
+                for pr in program["projects"]:
+                    if "studies" not in pr:
+                        break 
+                    for st in pr["studies"]:
+                        # Qui si puo' applicare il filtro sul primary_site che è relativo ai study 
+                        if "study_submitter_id" not in st or "pdc_study_id" not in st :
+                            break 
+                        all_program[st["pdc_study_id"]] = st["study_submitter_id"]
+    print(len(all_program))
+    # Con la funzione per la raccolta dei log2
+    for st in range(0, len(all_program) ):
+            key = list(all_program.keys())[st]
+            getLog2RatioInfo(key, all_program[key], cursor, conn) 
+         
 
 def sviluppo(cursor, conn):           
     programmi = []
-    #programmi = getPrograms()
+    programmi = getPrograms()
 
     #Creo un array studies in modo da evitare l'iterazione dei 3 cicli annidati per le funzioni di ottenimento case e sample
     # I tre cicli annidati avrebbero ciascuno un tempo di esecuzione di circa O(950) -> O(950) * O(950) * O(950) = 857.375.000 iterazioni da eseguire per ogni funzione 
@@ -351,19 +405,22 @@ def sviluppo(cursor, conn):
                     insertNewProject(studio.study_submitter_id, studio.study_name, cursor, conn)
                 #print("finita fase di inserimento progetti")
     x = 0
-    #x = len(studies)
+    #Elimino i study duplicati -> DA 942 diventano 144 come indicato sul sito -> Ci consente di eliminare 798 di iterazioni del ciclo for, tagliando drasticamente i tempi di esecuzione
+    studies_set = set(studies)
+    studies = list(studies_set)
+
+    x = 0
     #print(len(studies))
-    for st in range( 0, len(studies)):
+    for st in range( len(studies), len(studies)):
                 x+=1
-                print(x , len(studies))
+                print(x , len(studies), len(studies_set))
                 #print(studio.study_id)
                 getCases(studies[st].study_id, studies[st].study_submitter_id, cursor, conn)
                 print("----------------finita fase di inserimento case-----------------------")
                 getSample(studies[st].study_id, cursor, conn)
                 print("----------------finita fase di inserimento sample----------------------")
-    
     getGenes(cursor, conn)
-
+    #getProteinInfo(cursor, conn)
 
 # Creo connessione con il database 
 cursor, conn = databaseConnection()
