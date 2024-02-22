@@ -1,11 +1,10 @@
 
 import psycopg2
-import pandas as pd
-from io import StringIO
 import params
 import os 
 import datetime
 import pathlib
+
 
 # LE 2 CLOSURE SONO FONDAMENTALI PERCHE' LA CONNESSIONE USATA CHE VA IN ERRORE E' DA BUTTARE !! 
 '''

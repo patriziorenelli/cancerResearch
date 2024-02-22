@@ -1,7 +1,6 @@
 from DatabaseManager import *
 import requests
 import json
-from requests_html import *
 from DatabaseGenericInteraction import * 
 from GetGeneProtInformation import *
 from GetLog2GeneAliquot import *
@@ -28,17 +27,18 @@ class Project:
     
 
 class Study:
-    def __init__(self, study_id, study_submitter_id, study_name, disease_types, primary_sites):
+    def __init__(self, study_id, study_submitter_id, study_name, disease_types, primary_sites, pdc_study):
         self.study_id = study_id
         self.study_submitter_id = study_submitter_id
         self.study_name = study_name
         self.disease_types = disease_types  # è un array
         self.primary_sites = primary_sites  # è un array
+        self.pdc_study = pdc_study
 
 '''
-Funzione che ottiene i dati di tutti gli studi, programmi e progetti disponibili, necessari per ottenere tutti gli altri dati disponibili 
+Funzione che ottiene i dati di tutti gli studi, programmi e progetti disponibili, necessari per ottenere tutti gli altri dati disponibili -> Superflui vista la struttura del nostro db
 '''
-def getPrograms():
+def getPrograms2():
     try:
         gdc_api_url = "https://pdc.cancer.gov/graphql?query={allPrograms (acceptDUA: true)  {program_id  program_submitter_id  name projects  {project_id  project_submitter_id  name  studies  {pdc_study_id study_id study_submitter_id submitter_id_name analytical_fraction study_name disease_types primary_sites embargo_date experiment_type acquisition_type} }}}"
         response = requests.get(gdc_api_url)
@@ -56,26 +56,41 @@ def getPrograms():
             studies = []
             projects = []
             if "projects" not in program:
-                break
+                continue
             for pr in program["projects"]:
                 if "studies" not in pr:
-                    break 
+                    continue 
                 for st in pr["studies"]:
                     # Qui si puo' applicare il filtro sul primary_site che è relativo ai study 
                     if "study_id" not in st or "study_submitter_id" not in st or "study_name" not in st or "disease_types" not in st or "primary_sites" not in st:
-                        break 
-                    studies.append(Study(st["study_id"], st["study_submitter_id"], st["study_name"], st["disease_types"],st["primary_sites"] ))
+                        continue 
+                    studies.append(Study(st["study_id"], st["study_submitter_id"], st["study_name"], st["disease_types"],st["primary_sites"],  st["pdc_study_id"]))
                 if "project_id" not in pr or "project_submitter_id" not in pr or "name" not in pr:                
-                    break
+                    continue
                 projects.append(Project(pr["project_id"], pr["project_submitter_id"], pr["name"], studies))
                 if "program_id" not in program or "program_submitter_id" not in program or "name" not in program:
-                    break
+                    continue
             programs.append( Program(program["program_id"], program["program_submitter_id"],program["name"], projects ) )
 
         return programs
     except:
         print("ERRORE FATALE!")
         return None
+
+'''
+La funzione che usiamno realmente per ottenere i progetti 
+'''
+def getProgram():
+
+        gdc_api_url = "https://pdc.cancer.gov/graphql?query={ studyCatalog (acceptDUA: true) { pdc_study_id versions { study_id study_submitter_id submitter_id_name study_shortname study_version is_latest_version } } }"
+        response = requests.get(gdc_api_url)
+        
+        studies = []
+        st = json.loads(response.content.decode("utf-8"))
+        
+        for study in st["data"]["studyCatalog"]:
+            studies.append(Study(study["versions"][0]["study_id"], study["versions"][0]["study_submitter_id"], study["versions"][0]["submitter_id_name"], None, None, study["pdc_study_id"] ))
+        return studies
 
 '''
 Funzione che ottiene i case relativi ad un singolo programma
@@ -85,7 +100,7 @@ def getCases(study, study_id, cursor, conn):
         # Otteniamo il numero di cases relativi allo studio
         gdc_api_url = 'https://pdc.cancer.gov/graphql?query={paginatedCaseDemographicsPerStudy (study_id: "' + study +  '" offset: 0 limit: 1 acceptDUA: true) { total caseDemographicsPerStudy { case_id case_submitter_id disease_type primary_site demographics { demographic_id ethnicity gender demographic_submitter_id race cause_of_death days_to_birth days_to_death vital_status year_of_birth year_of_death age_at_index premature_at_birth weeks_gestation_at_birth age_is_obfuscated cause_of_death_source occupation_duration_years country_of_residence_at_enrollment} } pagination { count sort from page total pages size } }}'
         response = requests.get(gdc_api_url)
-
+        #print(study)
         if response.status_code == 204 or response == None or response.content == None:
             return
 
@@ -94,13 +109,13 @@ def getCases(study, study_id, cursor, conn):
             return 
         cases_number = str( json.loads(response.content.decode("utf-8"))["data"]["paginatedCaseDemographicsPerStudy"]["total"] )
         #print(json.loads(response.content.decode("utf-8"))["data"])
-        print("case number " + str(cases_number) )
+        #print("case number " + str(cases_number) )
         # Otteniamo i cases relativi allo studio 
         gdc_api_url = 'https://pdc.cancer.gov/graphql?query={paginatedCaseDemographicsPerStudy (study_id: "' + study +  '" offset: 0 limit: ' + cases_number + ' acceptDUA: true) { total caseDemographicsPerStudy { case_id case_submitter_id disease_type primary_site demographics { demographic_id ethnicity gender demographic_submitter_id race cause_of_death days_to_birth days_to_death vital_status year_of_birth year_of_death age_at_index premature_at_birth weeks_gestation_at_birth age_is_obfuscated cause_of_death_source occupation_duration_years country_of_residence_at_enrollment} } pagination { count sort from page total pages size } }}'
         response = requests.get(gdc_api_url)
         re = json.loads(response.content.decode("utf-8"))
         #print(re)
-        if "data" not in re or "paginatedCaseDemographicsPerStudy" not in re["data"] or "total" not in re["data"]["paginatedCaseDemographicsPerStudy"]:
+        if "data" not in re or "paginatedCaseDemographicsPerStudy" not in re["data"]:
             return
 
         #print(json.loads(response.content.decode("utf-8"))["data"]["paginatedCaseDemographicsPerStudy"]["caseDemographicsPerStudy"])
@@ -114,6 +129,7 @@ def getCases(study, study_id, cursor, conn):
                             sub_id = case['case_submitter_id']
                             case = case['demographics'][0]
                             insertNewCase(sub_id, case['ethnicity'], case['gender'], case['race'], case['vital_status'], study_id, primary_site, disease, cursor, conn)
+                            #print("AGGIUNTO")
                 except:
                     print("AIUTO CHECK ")
                     conn.rollback()
@@ -129,85 +145,95 @@ Funzione che ottiene tutti i campioni biologici di un singolo studio
 '''
 def getSample(study, cursor, conn):
 
-
-    gdc_api_url = 'https://pdc.cancer.gov/graphql?query={ paginatedCasesSamplesAliquots(study_id:"' + study +  '"  offset:0 limit: 1 acceptDUA: true) { total casesSamplesAliquots { case_id case_submitter_id days_to_lost_to_followup disease_type index_date lost_to_followup primary_site samples { sample_id sample_submitter_id sample_type sample_type_id gdc_sample_id gdc_project_id biospecimen_anatomic_site composition current_weight days_to_collection days_to_sample_procurement diagnosis_pathologically_confirmed freezing_method initial_weight intermediate_dimension longest_dimension method_of_sample_procurement pathology_report_uuid preservation_method sample_type_id shortest_dimension time_between_clamping_and_freezing time_between_excision_and_freezing tissue_type tumor_code tumor_code_id tumor_descriptor diagnoses{ diagnosis_id diagnosis_submitter_id annotation} aliquots { aliquot_id aliquot_submitter_id analyte_type aliquot_run_metadata { aliquot_run_metadata_id label experiment_number fraction replicate_number date alias analyte} } } } pagination { count sort from page total pages size } } }'
+    #print(study)    
+    query = 'https://pdc.cancer.gov/graphql?query={ paginatedCasesSamplesAliquots(pdc_study_id:"' + study +  '"  offset:0 limit: 1 ) { total casesSamplesAliquots { case_id case_submitter_id days_to_lost_to_followup disease_type index_date lost_to_followup primary_site samples { sample_id sample_submitter_id sample_type sample_type_id gdc_sample_id gdc_project_id biospecimen_anatomic_site composition current_weight days_to_collection days_to_sample_procurement diagnosis_pathologically_confirmed freezing_method initial_weight intermediate_dimension longest_dimension method_of_sample_procurement pathology_report_uuid preservation_method sample_type_id shortest_dimension time_between_clamping_and_freezing time_between_excision_and_freezing tissue_type tumor_code tumor_code_id tumor_descriptor diagnoses{ diagnosis_id diagnosis_submitter_id annotation} aliquots { aliquot_id aliquot_submitter_id analyte_type aliquot_run_metadata { aliquot_run_metadata_id label experiment_number fraction replicate_number date alias analyte} } } } pagination { count sort from page total pages size } } }'
+    #print(query)
+    gdc_api_url = query
+    
     response = requests.get(gdc_api_url)
+    if json.loads(response.content.decode("utf-8"))["data"]["paginatedCasesSamplesAliquots"] == None:
+         #print("none")
+         return
     samples_number = str( json.loads(response.content.decode("utf-8"))["data"]["paginatedCasesSamplesAliquots"]["total"] )
 
 
-    gdc_api_url = 'https://pdc.cancer.gov/graphql?query={ paginatedCasesSamplesAliquots(study_id:"' + study +  '"  offset:0 limit: ' + samples_number + ' acceptDUA: true) { total casesSamplesAliquots { case_id case_submitter_id days_to_lost_to_followup disease_type index_date lost_to_followup primary_site samples { sample_id sample_submitter_id sample_type sample_type_id gdc_sample_id gdc_project_id biospecimen_anatomic_site composition current_weight days_to_collection days_to_sample_procurement diagnosis_pathologically_confirmed freezing_method initial_weight intermediate_dimension longest_dimension method_of_sample_procurement pathology_report_uuid preservation_method sample_type_id shortest_dimension time_between_clamping_and_freezing time_between_excision_and_freezing tissue_type tumor_code tumor_code_id tumor_descriptor diagnoses{ diagnosis_id diagnosis_submitter_id annotation} aliquots { concentration aliquot_id aliquot_submitter_id analyte_type concentration aliquot_run_metadata { aliquot_run_metadata_id label experiment_number fraction replicate_number date alias analyte} } } } pagination { count sort from page total pages size } } }'
+    gdc_api_url = 'https://pdc.cancer.gov/graphql?query={ paginatedCasesSamplesAliquots(pdc_study_id:"' + study +  '"  offset:0 limit: ' + samples_number + ' ) { total casesSamplesAliquots { case_id case_submitter_id days_to_lost_to_followup disease_type index_date lost_to_followup primary_site samples { sample_id sample_submitter_id sample_type sample_type_id gdc_sample_id gdc_project_id biospecimen_anatomic_site composition current_weight days_to_collection days_to_sample_procurement diagnosis_pathologically_confirmed freezing_method initial_weight intermediate_dimension longest_dimension method_of_sample_procurement pathology_report_uuid preservation_method sample_type_id shortest_dimension time_between_clamping_and_freezing time_between_excision_and_freezing tissue_type tumor_code tumor_code_id tumor_descriptor diagnoses{ diagnosis_id diagnosis_submitter_id annotation} aliquots { aliquot_id aliquot_submitter_id analyte_type concentration aliquot_run_metadata { aliquot_run_metadata_id label experiment_number fraction replicate_number date alias analyte} } } } pagination { count sort from page total pages size } } }'
     response = requests.get(gdc_api_url)
-    print("sample number: " + str( samples_number)  )
+    #print("sample number: " + str( samples_number)  )
     
-    for samples in json.loads(response.content.decode("utf-8"))["data"]["paginatedCasesSamplesAliquots"]["casesSamplesAliquots"]:
-        case_submitter_id = samples['case_submitter_id']
-        for sample in samples["samples"]:
+    # SBAGLIATO FARE 0 PERCHE' COSI' SI PRENDE SOLO IL PRIMO -> DOBBIAMO ITERARE IN casesSamplesAliquots E DENTRO ITEREARE IN samples
+    #samples =  json.loads(response.content.decode("utf-8"))["data"]["paginatedCasesSamplesAliquots"]["casesSamplesAliquots"][0]
+    samples =  json.loads(response.content.decode("utf-8"))["data"]["paginatedCasesSamplesAliquots"]["casesSamplesAliquots"]
+
+    for s in samples: 
+         
+        case_submitter_id = s['case_submitter_id']
+        for sample in s["samples"]:
 
 
-                #print(sample)
-                tumor_code = sample['tumor_code']
-                tumor_code_id =  sample['tumor_code_id']
-                tumor_description = sample['tumor_descriptor']
+                    #print(sample)
+                    tumor_code = sample['tumor_code']
+                    tumor_code_id =  sample['tumor_code_id']
+                    tumor_description = sample['tumor_descriptor']
 
-                if  len(str(tumor_code_id)) != 0 and len(str(tumor_code)) != 0 and len(str(tumor_description)) != 0 and  str(tumor_code_id) != 'None' and str(tumor_code_id) != 'null' and not checkExistTumor(tumor_code_id, cursor):
-                        insertNewTumor(tumor_code_id, tumor_code, tumor_description, cursor, conn)
-                else:
-                    tumor_code_id = None
+                    if  len(str(tumor_code_id)) != 0 and len(str(tumor_code)) != 0 and len(str(tumor_description)) != 0 and  str(tumor_code_id) != 'None' and str(tumor_code_id) != 'null' and not checkExistTumor(tumor_code_id, cursor):
+                            insertNewTumor(tumor_code_id, tumor_code, tumor_description, cursor, conn)
+                    else:
+                        tumor_code_id = None
 
-
-                sample_type_id = sample['sample_type_id']
-                sample_type = sample['sample_type']
-                
-                if sample_type_id == None:
-                    sample_type_id = searchSampleTypeId(sample_type, cursor)
+                    sample_type_id = sample['sample_type_id']
+                    sample_type = sample['sample_type']
+                    
                     if sample_type_id == None:
-                            sample_type_id = None
+                        sample_type_id = searchSampleTypeId(sample_type, cursor)
+                        if sample_type_id == None:
+                                sample_type_id = None
+                        else:
+                            sample_type_id = sample_type_id[0] 
+
+
+                    # Se un sample type non è presente lo salvo all'interno del database
+                    elif not searchSampleTypeId(sample_type, cursor):
+                        #print(sample_type_id, sample_type)
+                        #print("--------NON C'E'---------")
+                        if len(sample_type_id) > 0:
+
+                            sample_type_id = int(sample_type_id.replace('"',''))
+                            #print(sample_type_id)
+                            insertNewSampleType(sample_type_id, sample_type, cursor, conn)
+                            sample_type_id =  searchSampleTypeId(sample_type, cursor)
+                        else:
+                            # imposto un sample_type_id = None perchè impostare un qualunque altro valore potrebbe causare poi conflitti con altri sample_type con type_id correttamente impostato
+                            sample_type_id =  None
+
                     else:
-                        sample_type_id = sample_type_id[0] 
-
-
-                # Se un sample type non è presente lo salvo all'interno del database
-                elif not searchSampleTypeId(sample_type, cursor):
-                    #print(sample_type_id, sample_type)
-                    #print("--------NON C'E'---------")
-                    if len(sample_type_id) > 0:
-
-                        sample_type_id = int(sample_type_id.replace('"',''))
-                        #print(sample_type_id)
-                        insertNewSampleType(sample_type_id, sample_type, cursor, conn)
+                        # Effettuo comunque la conversione del sample_type_id nel sample_type_id ottenuto dal database ottenuti attraverso il sample_type
+                        # Questa azione è necessaria poichè potrebbero esserci sample_type_id che sono collegati ad un sample_type che è salvato nel database con un altro sample_type_id causando errori nel momento dell'insermento nel database 
                         sample_type_id =  searchSampleTypeId(sample_type, cursor)
-                    else:
-                        # imposto un sample_type_id = None perchè impostare un qualunque altro valore potrebbe causare poi conflitti con altri sample_type con type_id correttamente impostato
-                        sample_type_id =  None
-
-                else:
-                    # Effettuo comunque la conversione del sample_type_id nel sample_type_id ottenuto dal database ottenuti attraverso il sample_type
-                    # Questa azione è necessaria poichè potrebbero esserci sample_type_id che sono collegati ad un sample_type che è salvato nel database con un altro sample_type_id causando errori nel momento dell'insermento nel database 
-                    sample_type_id =  searchSampleTypeId(sample_type, cursor)
 
 
-                # sample['sample_submitter_id'] può essere un'array quindi bisogna fare uno split su , e fare l'insert per i singoli samp in sample['sample_submitter_id]
-                for samp in sample['sample_submitter_id'].split(','):
-                    #print("EILA " + samp)
-                    sample_id =  samp
-                    #print( sample_id, sample_type_id, tumor_code_id, study)
+                    # sample['sample_submitter_id'] può essere un'array quindi bisogna fare uno split su , e fare l'insert per i singoli samp in sample['sample_submitter_id]
+                    for samp in sample['sample_submitter_id'].split(','):
+                        #print("EILA " + samp)
+                        sample_id =  samp
+                        #print( sample_id, sample_type_id, tumor_code_id, study)
 
-                    # 2 IF DA RIATTIVARE -> SI POSSONO LASCIARE ANCHE COSI' TANTO LE QUERY HANNO LE CLAUSOLO ON CONFLICT 
-                    # TANTO COSI' EVITEREMMO TENTATIVI DI INSERT, MA FAREMMO COMUNQUE 2 SELECT SEMPRE + EVENTUALMENTE 5 INSERT IN CASO DI ESITO POSITIVO DEI CHECK 
-                    #if not checkExistBiospecimen(sample_id, cursor):
-                    #    if checkExistCase(case_submitter_id, cursor):
-                            
-                    insertNewBiospecimen(sample_id, case_submitter_id, 1, cursor, conn)
-                    insertNewSample(sample_id, sample_type_id, tumor_code_id, cursor, conn)
+                        # 2 IF DA RIATTIVARE -> SI POSSONO LASCIARE ANCHE COSI' TANTO LE QUERY HANNO LE CLAUSOLO ON CONFLICT 
+                        # TANTO COSI' EVITEREMMO TENTATIVI DI INSERT, MA FAREMMO COMUNQUE 2 SELECT SEMPRE + EVENTUALMENTE 5 INSERT IN CASO DI ESITO POSITIVO DEI CHECK 
+                        #if not checkExistBiospecimen(sample_id, cursor):
+                        #    if checkExistCase(case_submitter_id, cursor):
+                                
+                        insertNewBiospecimen(sample_id, case_submitter_id, 1, cursor, conn)
+                        insertNewSample(sample_id, sample_type_id, tumor_code_id, cursor, conn)
                     for aliquote in sample['aliquots']:
-                                concentration = aliquote['concentration']
-                                aliquote_id = aliquote['aliquot_submitter_id']
-                                # In PDC non abbiamo questi dati separati quindi l'unico modo per rispettare i vincoli imposti dal database per la parte di GDC è quella di creare portion e analyte fittizi se no ci basterebbe aliquote
-                                insertNewPortion(sample_id, sample_id, cursor, conn)
-                                insertNewAnalyte(sample_id, sample_id, concentration, cursor,conn)
-                                # SI E' TOLTA LA FK TRA ALIQUOTE E ANALYTE & ALIQUOTE E BIOSPECIMEN ->  PER EFFETTUARE QUESTA MODIFICA, PRIMA SI USAVA SAMPLE_ID ANCHE IN ALIQUOTE AL POSTO DI ALIQUOTE_ID -> bisogna vedere se la funzione di scraping web funziona così
-                                insertNewAliquote(aliquote_id, sample_id, concentration, cursor, conn)
-
+                                    concentration = aliquote['concentration']
+                                    aliquote_id = aliquote['aliquot_submitter_id']
+                                    # In PDC non abbiamo questi dati separati quindi l'unico modo per rispettare i vincoli imposti dal database per la parte di GDC è quella di creare portion e analyte fittizi se no ci basterebbe aliquote
+                                    insertNewPortion(sample_id, sample_id, cursor, conn)
+                                    insertNewAnalyte(sample_id, sample_id, concentration, cursor,conn)
+                                    # SI E' TOLTA LA FK TRA ALIQUOTE E ANALYTE & ALIQUOTE E BIOSPECIMEN ->  PER EFFETTUARE QUESTA MODIFICA, PRIMA SI USAVA SAMPLE_ID ANCHE IN ALIQUOTE AL POSTO DI ALIQUOTE_ID -> bisogna vedere se la funzione di scraping web funziona così
+                                    insertNewAliquote(aliquote_id, sample_id, concentration, cursor, conn)
+                                    #print(aliquote_id)
 
 '''
 Funzione che ottiene i dati dei geni disponibili 
@@ -215,7 +241,7 @@ Funzione che ottiene i dati dei geni disponibili
 def getGenes(cursor,conn):
     # QUI BISOGNA CONSIDERARE L'OFFSET E I LIMIT DAL FILE status.txt
     # offset impostato a x poichè sto scaricando in diverse volte i geni, dovrebbe essere impostato a 0
-    gdc_api_url = 'https://pdc.cancer.gov/graphql?query={ getPaginatedGenes(offset: 3500 limit: 20000 acceptDUA: true) { total genesProper { gene_id gene_name NCBI_gene_id authority description organism chromosome locus proteins assays } pagination { count sort from page total pages size } } }'
+    gdc_api_url = 'https://pdc.cancer.gov/graphql?query={ getPaginatedGenes(offset: 11890 limit: 20000 acceptDUA: true) { total genesProper { gene_id gene_name NCBI_gene_id authority description organism chromosome locus proteins assays } pagination { count sort from page total pages size } } }'
     response = requests.get(gdc_api_url)
     re = json.loads(response.content.decode("utf-8"))
 
@@ -230,14 +256,14 @@ def getGenes(cursor,conn):
 
     for gene in  json.loads(response.content.decode("utf-8"))["data"]["getPaginatedGenes"]["genesProper"]:
         gene_name = gene["gene_name"]
-        print(gene_name)
+        #print(gene_name)
 
         gdc_api_url= 'https://pdc.cancer.gov/graphql?query={geneSpectralCount (gene_name: "' + gene_name+ '" acceptDUA: true){gene_id gene_name NCBI_gene_id authority description organism chromosome locus proteins assays spectral_counts { project_submitter_id plex spectral_count distinct_peptide unshared_peptide study_submitter_id pdc_study_id} }}'
         # mettere il check di none  
         response = requests.get(gdc_api_url)
 
         if response == None or response.content == None:
-            print(response, response.content)
+            #print(response, response.content)
             continue
         try:
             re = json.loads(response.content.decode("utf-8"))
@@ -268,10 +294,12 @@ def getGenes(cursor,conn):
             gdc_api_url = "https://pdc.cancer.gov/graphql?query={allPrograms (acceptDUA: true)  {program_id  program_submitter_id  name projects  {project_id  project_submitter_id  name  studies  {pdc_study_id study_id study_submitter_id submitter_id_name analytical_fraction study_name disease_types primary_sites embargo_date experiment_type acquisition_type} }}}"
             response = requests.get(gdc_api_url)
             if response == None or response.content == None:
-                print(response, response.content)
+                #print(response, response.content)
                 continue
-
-            prog = json.loads(response.content.decode("utf-8"))
+            try:
+                prog = json.loads(response.content.decode("utf-8"))
+            except:
+                 continue
 
             if "data" not in prog and "allPrograms" not in prog["data"]:
                 continue 
@@ -353,8 +381,9 @@ def getProteinInfo(cursor, conn):
          geni_found[x[0]] = x[1]
          #print(x)
 
+    # DA RIATTIVARE LA FUNZIONE GetGeneProInformation -> Disattivata nella fase di test 
     for gen in list(geni_found.keys()):
-        #GetGeneProInformation(geni_found[gen], gen, cursor, conn)
+        GetGeneProInformation(geni_found[gen], gen, cursor, conn)
         pass
     all_program = dict()
     gdc_api_url = "https://pdc.cancer.gov/graphql?query={allPrograms (acceptDUA: true)  {program_id  program_submitter_id  name projects  {project_id  project_submitter_id  name  studies  {pdc_study_id study_id study_submitter_id submitter_id_name analytical_fraction study_name disease_types primary_sites embargo_date experiment_type acquisition_type} }}}"
@@ -368,7 +397,6 @@ def getProteinInfo(cursor, conn):
 
             # Da qui possiamo prendere i programmi == project e tutti i studi associati ad ogni programma 
     for program in prog["data"]["allPrograms"]:
-                studies = []
                 if "projects" not in program:
                     break
                 for pr in program["projects"]:
@@ -379,7 +407,8 @@ def getProteinInfo(cursor, conn):
                         if "study_submitter_id" not in st or "pdc_study_id" not in st :
                             break 
                         all_program[st["pdc_study_id"]] = st["study_submitter_id"]
-    print(len(all_program))
+
+    #print(len(all_program))
     # Con la funzione per la raccolta dei log2
     for st in range(0, len(all_program) ):
             key = list(all_program.keys())[st]
@@ -388,39 +417,50 @@ def getProteinInfo(cursor, conn):
 
 def sviluppo(cursor, conn):           
     programmi = []
-    programmi = getPrograms()
+    # Se la funzione getProgram non dovesse funzionare nel momento che si avvia il progetto per la prima volta, utilizzare la funzione getPrograms2 che è più completa ma più complessa 
+    #programmi = getPrograms2()
+    # DA RIATTIVARE 
+    programmi = getProgram()
 
     #Creo un array studies in modo da evitare l'iterazione dei 3 cicli annidati per le funzioni di ottenimento case e sample
     # I tre cicli annidati avrebbero ciascuno un tempo di esecuzione di circa O(950) -> O(950) * O(950) * O(950) = 857.375.000 iterazioni da eseguire per ogni funzione 
     # In questo modo invece avremo soltanto per la fase di inserimento dei progetti O(950)^3 che è però un tempo trascurabile vista la solo iterazione con il db, 
     #   invece nelle altre funzioni avremo interazioni web e scraping che allungherebbero drasticamente il tempo di esecuzione 
-    studies = []
-    
+    #studies = []
+    '''
     for programma in programmi:
         for progetto in programma.projects:
             for studio in progetto.studies: 
                 studies.append(studio)
                 # Effettuiamo l'insert degli study che sono l'equivalente dei project all'interno di PDC 
-                if not checkExistProject(studio.study_submitter_id, cursor):
-                    insertNewProject(studio.study_submitter_id, studio.study_name, cursor, conn)
-                #print("finita fase di inserimento progetti")
+                # RIATTIVARE QUESTO IF
+                #if not checkExistProject(studio.study_submitter_id, cursor):
+                insertNewProject(studio.study_submitter_id, studio.study_name, cursor, conn)
+                print(progetto.project_name)
+            #print("finita fase di inserimento progetti")
+
+    '''
+    #print("Finiti progetti" + str( len(programmi)) )
+    for studio in programmi: 
+        insertNewProject(studio.study_submitter_id, studio.study_name, cursor, conn)
+        
+
     x = 0
     #Elimino i study duplicati -> DA 942 diventano 144 come indicato sul sito -> Ci consente di eliminare 798 di iterazioni del ciclo for, tagliando drasticamente i tempi di esecuzione
-    studies_set = set(studies)
+    studies_set = set(programmi)
     studies = list(studies_set)
 
     x = 0
-    #print(len(studies))
-    for st in range( len(studies), len(studies)):
+    for st in range(0, len(studies)):
                 x+=1
-                print(x , len(studies), len(studies_set))
+                #print(x , len(studies), len(studies_set))
                 #print(studio.study_id)
                 getCases(studies[st].study_id, studies[st].study_submitter_id, cursor, conn)
-                print("----------------finita fase di inserimento case-----------------------")
-                getSample(studies[st].study_id, cursor, conn)
-                print("----------------finita fase di inserimento sample----------------------")
-    getGenes(cursor, conn)
-    #getProteinInfo(cursor, conn)
+                #print("----------------finita fase di inserimento case-----------------------")
+                getSample(studies[st].pdc_study, cursor, conn)
+                #print("----------------finita fase di inserimento sample----------------------")
+    #getGenes(cursor, conn)
+    getProteinInfo(cursor, conn)
 
 # Creo connessione con il database 
 cursor, conn = databaseConnection()

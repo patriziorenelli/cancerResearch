@@ -1,11 +1,9 @@
 import requests
 import pandas as pd
-import seaborn as sns
-import matplotlib.pyplot as plt
-from scipy.stats import zscore
 import json
 import os 
 from DatabaseGenericInteraction import * 
+import math 
 
 
 # Funzione per scaricare gli Ensembl Id di tutti i singoli geni, questo è necesario poichè la query utilizzata sotto ritorna solo i nomi dei geni
@@ -49,7 +47,7 @@ def query_pdc(pdc_study_id, data_type):
 
 # Per ogni studio possiamo ottenere i log2_ratio e gli unshared_log2_ratio
 def getLog2RatioInfo(program_pdc, project_id, cursor, conn):
-    data_type = [  'unshared_log2_ratio', 'log2_ratio' ]
+    data_type = [ 'log2_ratio', 'unshared_log2_ratio' ]
     geni_trans = dict()
     for type in data_type:
         decoded = query_pdc(program_pdc, type)
@@ -127,49 +125,75 @@ def getLog2RatioInfo(program_pdc, project_id, cursor, conn):
         #print(ga.iloc[0])
 
         aliquot = list(ga)
-        # numero colonne print(len(aliquot))
-        # numero righe print(len(ga))
-
-       # print(len(ga), len(aliquot), len(gene_name))
-
+        # numero colonne -> len(aliquot)
+        # numero righe -> len(ga)
         gen_key = list(geni_trans.keys())
         # BISOGNA RECUPERARE I GENE_ID DEI GENE_NAME
         for x in range(len(ga)):
             for aliq in aliquot:
-                #print(aliq)
+
                 # BISOGNA FARE CHECK CHE geni_trans[gene_name[x][0]] esista perchpè alcuni sono None dalla traduzione e quindi non li avrei 
                 if gene_name[x][0] not in gen_key or geni_trans[gene_name[x][0]] == None:
                     continue
-
-                #print( geni_trans[gene_name[x][0]] +  " | " + str((ga.iloc[x])[aliq]) +  " | " +  aliq +  " | " +  project_id + " | " +  str(checkExistGene(geni_trans[gene_name[x][0]], cursor) and checkExistProject(project_id, cursor) and str((ga.iloc[x])[aliq]) != "NaN" and checkExistAliquote(aliq, cursor)) )  
-                print(checkExistGene(geni_trans[gene_name[x][0]], cursor), checkExistProject(project_id, cursor), str((ga.iloc[x])[aliq]) != "NaN" , checkExistAliquote(aliq, cursor))      
-                #if str((ga.iloc[x])[aliq]) == "NaN":
-                    #time.sleep(10)
-                    #break
                 #print(program_pdc, project_id)
 
                 # Effettuiamo un controllo se tutti i valori che dovranno essere usati come primary key sono presenti nel database, in modo da evitare errori nell'esecuzione delle insert o update 
-                if checkExistGene(geni_trans[gene_name[x][0]], cursor) and checkExistProject(project_id, cursor) and str((ga.iloc[x])[aliq]) != "NaN" and checkExistAliquote(aliq, cursor):
+                if checkExistGene(geni_trans[gene_name[x][0]], cursor) and checkExistProject(project_id, cursor)  and checkExistAliquote(aliq, cursor):
                     #print( geni_trans[gene_name[x][0]] +  " | " + str((ga.iloc[x])[aliq]) +  " | " +  aliq +  " | " +  project_id)
+
+                    # Creo tuple con l'associazione gene aliquota e studio senza però altri valori
+
+                    # AGGIUNTA QUESTA PARTE PER IL CHECK SUI VALORI NaN
+                    try:
+                    
+                        if math.isnan( float( (ga.iloc[x])[aliq] ) ) :
+                                #print("NaN CONVERTITO ")
+                                log_val = 0
+                                #print( geni_trans[gene_name[x][0]] +  " | " + str(log_val) +  " | " +  aliq +  " | " +  project_id + " | " +  str(checkExistGene(geni_trans[gene_name[x][0]], cursor) and checkExistProject(project_id, cursor) and checkExistAliquote(aliq, cursor)) ) 
+                        else:
+                                log_val = str((ga.iloc[x])[aliq])
+                        #print(log_val)
+                    except:
+                        log_val = 0
+                        #print("ERRORE")
+                        #print( geni_trans[gene_name[x][0]] +  " | " + str(log_val) +  " | " +  aliq +  " | " +  project_id + " | " +  str(checkExistGene(geni_trans[gene_name[x][0]], cursor) and checkExistProject(project_id, cursor) and checkExistAliquote(aliq, cursor)) )  
 
 
 
                     # controllo quale colonna è da aggiornare 
                     if type == 'log2_ratio':
-                        if checkExistProtein_PDC(geni_trans[gene_name[x][0]], project_id, aliq,cursor):
-                            query = "UPDATE  public.protein_PDC SET log2_ratio = {} WHERE gene_id = '{}' and aliquot = '{}' and project_id = '{}' ;".format(str((ga.iloc[x])[aliq]), geni_trans[gene_name[x][0]], aliq, project_id )
+                        #print( log_val , str ( getLog2Ratio(geni_trans[gene_name[x][0]], project_id, aliq,cursor) == 0  or  getLog2Ratio(geni_trans[gene_name[x][0]], project_id, aliq,cursor) == None) )
+                        
+                        if checkExistProtein_PDC(geni_trans[gene_name[x][0]], project_id, aliq,cursor)  :
+                            if getLog2Ratio(geni_trans[gene_name[x][0]], project_id, aliq,cursor) == 0 or  getLog2Ratio(geni_trans[gene_name[x][0]], project_id, aliq,cursor) == None:
+                                query = "UPDATE  public.protein_PDC SET log2_ratio = {} WHERE gene_id = '{}' and aliquot = '{}' and project_id = '{}' ;".format(log_val, geni_trans[gene_name[x][0]], aliq, project_id )
+                                cursor.execute(query)
+                                conn.commit()
+                            else:
+                                query = None
                         else:
-                            query = "INSERT INTO public.protein_PDC (gene_id, log2_ratio, aliquot, project_id) VALUES ('{}', {}, '{}', '{}') ON CONFLICT (gene_id,project_id,aliquot) DO NOTHING;".format(geni_trans[gene_name[x][0]], str((ga.iloc[x])[aliq]), aliq, project_id )
-                    else: 
+                            query = "INSERT INTO public.protein_PDC (gene_id, log2_ratio, aliquot, project_id) VALUES ('{}', {}, '{}', '{}') ON CONFLICT (gene_id,project_id,aliquot) DO NOTHING;".format(geni_trans[gene_name[x][0]], log_val, aliq, project_id )
+                            cursor.execute(query)
+                            conn.commit()
+                        #print(query)
+                    else:
                         if checkExistProtein_PDC(geni_trans[gene_name[x][0]], project_id, aliq,cursor):
-                            query = "UPDATE  public.protein_PDC SET unshared_log2_ratio = {} WHERE gene_id = '{}' and aliquot = '{}' and project_id = '{}' ;".format(str((ga.iloc[x])[aliq]), geni_trans[gene_name[x][0]], aliq, project_id )
+                            if getUnsharedLog2Ratio(geni_trans[gene_name[x][0]], project_id, aliq,cursor) == 0 or getUnsharedLog2Ratio(geni_trans[gene_name[x][0]], project_id, aliq,cursor) == None:
+                                query = "UPDATE  public.protein_PDC SET unshared_log2_ratio = {} WHERE gene_id = '{}' and aliquot = '{}' and project_id = '{}' ;".format(log_val, geni_trans[gene_name[x][0]], aliq, project_id )
+                                cursor.execute(query)
+                                conn.commit()
                         else:
-                            query = "INSERT INTO public.protein_PDC (gene_id, unshared_log2_ratio, aliquot, project_id) VALUES ('{}', '{}', '{}', '{}') ON CONFLICT (gene_id,project_id,aliquot) DO NOTHING;".format(geni_trans[gene_name[x][0]], str((ga.iloc[x])[aliq]), aliq, project_id )
-
+                            query = "INSERT INTO public.protein_PDC (gene_id, unshared_log2_ratio, aliquot, project_id) VALUES ('{}', '{}', '{}', '{}') ON CONFLICT (gene_id,project_id,aliquot) DO NOTHING;".format(geni_trans[gene_name[x][0]], log_val, aliq, project_id )
+                            cursor.execute(query)
+                            conn.commit()
                     #print(query)
-                    cursor.execute(query)
-                    conn.commit()
-  
+                    #cursor.execute(query)
+                    #conn.commit()
+                else:
+                    pass
+                #print( geni_trans[gene_name[x][0]] +  " | " + str((ga.iloc[x])[aliq]) +  " | " +  aliq +  " | " +  project_id + " | " +  str(checkExistGene(geni_trans[gene_name[x][0]], cursor) and checkExistProject(project_id, cursor) and str((ga.iloc[x])[aliq]) != "NaN" and checkExistAliquote(aliq, cursor)) )  
+                #print(checkExistGene(geni_trans[gene_name[x][0]], cursor), checkExistProject(project_id, cursor), str((ga.iloc[x])[aliq]) != "NaN" , checkExistAliquote(aliq, cursor))      
+
         
 
 #getLog2RatioInfo('PDC000127', None, None,None)

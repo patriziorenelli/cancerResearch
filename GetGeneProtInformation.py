@@ -91,20 +91,33 @@ def GetGeneProInformation(geneName, gene_id, cursor, conn):
                         distinct_peptides = valori[4+y*const]
                         unshared_peptides = valori[5+y*const]
 
-                        if checkExistProject(study, cursor)  and checkExistAliquote(aliquot[y], cursor) and checkExistGene(gene_id, cursor):
+                        # lo study è study name -> devo prendere prima lo study id dal db e per effettuare check esistenza del progetto e fare la successiva insert nel database 
+                        study = getProjectId(study, cursor)
+
+                        #print(study != None  , checkExistAliquote(aliquot[y], cursor) , checkExistGene(gene_id, cursor))
+                        #print(study , aliquot[y],  gene_id)
+                        if study != None  and y < len(aliquot) and checkExistAliquote(aliquot[y], cursor) and checkExistGene(gene_id, cursor):
                               #print(label +" , "+ study+" , "+ spectral_count+" , "+ distinct_peptides+" , "+ unshared_peptides)
                               # facciamo insert nella tabella protein_PDC 
                               query = "INSERT INTO public.protein_PDC VALUES ('{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}') ON CONFLICT (gene_id,project_id,aliquot) DO NOTHING;".format(gene_id, label, spectral_count, distinct_peptides, unshared_peptides, 0, 0, aliquot[y], study )
                               cursor.execute(query)
                               conn.commit()
 
-            try:   
+            try:  
                   # Scorriamo alla pagina successiva     
                   driver.find_element(By.XPATH,'//*[@id="aliquotRecordTable"]/div/p-paginator/div/a[3]/span').click()
                   # Attendiamo un tempo casuale tra 0.86s e 4.86s in modo da cercare di evitare il controllo di sicurezza anti-robot con captcha
-                  sleep(0.86 + random.randint(0,4))
+                  sleep(0.95 + random.randint(0,4))
             except:
-                  cambio = False
+                  # Tento una seconda volta il click (potrebbe essere stata la connessione lenta a non aver consenito il caricamento della pagina)
+                  try:
+                        print("ERROE CATASTROFICO")
+                        sleep(5)
+                        driver.find_element(By.XPATH,'//*[@id="aliquotRecordTable"]/div/p-paginator/div/a[3]/span').click()
+                        sleep(0.86 + random.randint(0,4))
+                  except:
+                        # Se fallisce anche il secondo tentativo vado al gene successivo
+                        cambio = False
 
               
 

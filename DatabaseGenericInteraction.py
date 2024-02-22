@@ -57,6 +57,34 @@ def checkExistProject(id, cursor):
         return False
     return True
 
+'''
+Funzione che ottiene il project id partendo dal nome 
+'''
+def getProjectId(name, cursor):
+    cursor.execute("SELECT project_id FROM project WHERE name = %s", (name,))
+    result = cursor.fetchall()
+    if result == None or len(result) == 0:
+         return None
+    else:  return result[0][0]
+
+
+'''
+Funzione che ottiene il lo2_ratio di una riga da protein_pdc
+'''
+def getLog2Ratio(gene, project_id, aliq,cursor):
+    cursor.execute("SELECT log2_ratio FROM protein_pdc WHERE gene_id = %s and aliquot = %s and project_id = %s", (gene, aliq, project_id,))
+    result = cursor.fetchall()
+    if result == None or len(result) == 0:
+         return None
+    else:  return result[0][0]
+
+
+def getUnsharedLog2Ratio(gene, project_id, aliq,cursor):
+    cursor.execute("SELECT unshared_log2_ratio FROM protein_pdc WHERE gene_id = %s and aliquot = %s and project_id = %s", (gene, aliq, project_id,))
+    result = cursor.fetchall()
+    if result == None or len(result) == 0:
+         return None
+    else:  return result[0][0]  
 
 '''
 Funzione che si occupa di inserire un nuovo progetto nel database 
@@ -141,13 +169,16 @@ def insertNewGeneProteinStudy(gene,protein,study,cursor,conn):
     cursor.execute(query)
     conn.commit()
 
-
+'''
+Funzione che controlla se all'interno della table protein_pdc è già salvata una tupla uguale 
+'''
 def checkExistProtein_PDC(gene_id, project_id, aliquot,cursor):
     cursor.execute("SELECT COUNT(*) FROM protein_pdc WHERE gene_id = %s and aliquot = %s and project_id = %s", (gene_id,aliquot, project_id,))
     result = cursor.fetchone()
     if result[0] == 0: 
         return False
     return True
+
 
 '''
 Funzione che si occupa di inserire un nuovo tumore nel database 
